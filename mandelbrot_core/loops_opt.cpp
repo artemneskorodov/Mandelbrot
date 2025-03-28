@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include <math.h>
+#include <xmmintrin.h>
 /*----------------------------------------------------------------------------*/
 #include "colors.h"
 #include "mandelbrot.h"
@@ -56,10 +57,11 @@ static err_state_t          run_testing_mode       (ctx_t          *ctx,
 
 static err_state_t          get_render_time        (ctx_t          *ctx);
 
-static inline sf::Uint32    get_point_color        (unsigned int    iters);
+static sf::Uint32    get_point_color        (unsigned int    iters);
 
-static inline unsigned int  get_mandelbrot_iters   (float           x0,
-                                                    float           y0);
+static  void          get_mandelbrot_iters   (__m128           x0,
+                                                    __m128           y0,
+                                                    unsigned int    iters[4]);
 
 /*============================================================================*/
 
@@ -174,32 +176,40 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
     /*------------------------------------------------------------------------*/
     /* Y-coordinate of first point on screen                                  */
-    float y0 = -0.5f * DefaultScale - DefaultOffsetY;
+    __m128 y0 = _mm_set_ps1(-0.5f * DefaultScale - DefaultOffsetY);
+    __m128 dy = _mm_set_ps1(DefaultDY);
     /*------------------------------------------------------------------------*/
     /* Running through points from top to bottom                              */
     for(unsigned int yi = 0; yi < WindowHeight; yi++, y0 += DefaultDY) {
         /*--------------------------------------------------------------------*/
         /* X-coordinate of first point for each line determined by Y0         */
-        float x0 = -0.5f * DefaultScale - DefaultOffsetX;
+        float x0_point = -0.5f * DefaultScale - DefaultOffsetX;
+        __m128 x0 = _mm_set_ps(x0_point + 3 * DefaultDX, x0_point + 2 * DefaultDX, x0_point + DefaultDX, x0_point);
+        __m128 dx = _mm_set_ps1(DefaultDX + 4);
         /*--------------------------------------------------------------------*/
         /* Running through points on line                                     */
-        for(unsigned int xi = 0; xi < WindowWidth; xi++, x0 += DefaultDX) {
+        for(unsigned int xi = 0; xi < WindowWidth; xi += 4) {
             /*----------------------------------------------------------------*/
             /* Variable to store itarations number                            */
-            unsigned int iters = 0;
             /*----------------------------------------------------------------*/
             /* Getting point itarations number for point_iters times          */
             for(size_t i = 0; i < point_iters; i++) {
+                unsigned int iters[4] = {};
                 /*------------------------------------------------------------*/
                 /* Running function to get coordinates                        */
-                iters = get_mandelbrot_iters(x0, y0);
+                get_mandelbrot_iters(x0, y0, iters);
                 /*------------------------------------------------------------*/
                 /* Writing color to array to make compiler save this function */
-                ctx->image[xi + WindowWidth * yi] = get_point_color(iters);
+                ctx->image[xi + WindowWidth * yi + 0] = get_point_color(iters[0]);
+                ctx->image[xi + WindowWidth * yi + 1] = get_point_color(iters[1]);
+                ctx->image[xi + WindowWidth * yi + 2] = get_point_color(iters[2]);
+                ctx->image[xi + WindowWidth * yi + 3] = get_point_color(iters[3]);
                 /*------------------------------------------------------------*/
             }
+            x0 = _mm_add_ps(x0, dx);
             /*----------------------------------------------------------------*/
         }
+        y0 = _mm_add_ps(y0, dy);
         /*--------------------------------------------------------------------*/
     }
     /*------------------------------------------------------------------------*/
@@ -244,32 +254,40 @@ err_state_t run_normal_mode(ctx_t *ctx) {
         _RETURN_IF_ERROR(update_position(ctx));
         /*--------------------------------------------------------------------*/
         /* First point Y-coordinate                                           */
-        float y0 = -0.5f * ctx->scale - ctx->offset_y;
+        __m128 y0 = _mm_set_ps1(-0.5f * ctx->scale - ctx->offset_y);
         /*--------------------------------------------------------------------*/
         /* Addition to point Y-coordinate for each                            */
-        float dy = ctx->scale / WindowHeightFloat;
+        __m128 dy = _mm_set_ps1(ctx->scale / WindowHeightFloat);
         /*--------------------------------------------------------------------*/
         /* Running through all points                                         */
-        for(unsigned int yi = 0; yi < WindowHeight; yi++, y0 += dy) {
+        for(unsigned int yi = 0; yi < WindowHeight; yi++) {
             /*----------------------------------------------------------------*/
             /* X-coordinate of first point in line determined by y0           */
-            float x0 = -0.5f * ctx->scale - ctx->offset_x;
+            float x0_point = -0.5f * ctx->scale - ctx->offset_x;
+            float dx_point = ctx->scale / WindowWidthFloat;
+            __m128 x0 = _mm_set_ps(x0_point + 3 * dx_point, x0_point + 2 * dx_point, x0_point + dx_point, x0_point);
             /*----------------------------------------------------------------*/
             /* Addition to point X-coordinate                                 */
-            float dx = ctx->scale / WindowWidthFloat;
+            __m128 dx = _mm_set_ps1(dx_point * 4);
             /*----------------------------------------------------------------*/
             /* Running through line                                           */
-            for(unsigned int xi = 0; xi < WindowWidth; xi++, x0 += dx) {
+            for(unsigned int xi = 0; xi < WindowWidth; xi += 4) {
                 /*------------------------------------------------------------*/
                 /* Number of iterations to get out of circle with radius      */
                 /* sqrt(PointOutRadiusSq)                                     */
-                unsigned int iters = get_mandelbrot_iters(x0, y0);
+                unsigned int iters[4] = {};
+                get_mandelbrot_iters(x0, y0, iters);
                 /*------------------------------------------------------------*/
                 /* Printing point color depending on its iterations number    */
-                ctx->image[xi + WindowWidth * yi] = get_point_color(iters);
+                ctx->image[xi + WindowWidth * yi + 0] = get_point_color(iters[0]);
+                ctx->image[xi + WindowWidth * yi + 1] = get_point_color(iters[1]);
+                ctx->image[xi + WindowWidth * yi + 2] = get_point_color(iters[2]);
+                ctx->image[xi + WindowWidth * yi + 3] = get_point_color(iters[3]);
                 /*------------------------------------------------------------*/
+                x0 = _mm_add_ps(x0, dx);
             }
             /*----------------------------------------------------------------*/
+            y0 = _mm_add_ps(y0, dy);
         }
         /*--------------------------------------------------------------------*/
         log_msg("\t-Updated points\n");
@@ -286,7 +304,7 @@ err_state_t run_normal_mode(ctx_t *ctx) {
 
 /*============================================================================*/
 
-inline sf::Uint32 get_point_color(unsigned int iters) {
+sf::Uint32 get_point_color(unsigned int iters) {
     /*------------------------------------------------------------------------*/
     /* Red component of color                                                 */
     sf::Uint32 color_red   = 20 + (150 - 20) * (150 - 20) * (150 - 20) *
@@ -321,32 +339,45 @@ inline sf::Uint32 get_point_color(unsigned int iters) {
 
 /*============================================================================*/
 
-inline unsigned int get_mandelbrot_iters(float x0, float y0) {
-    /*------------------------------------------------------------------------*/
-    /* Number of iterations                                                   */
-    unsigned int n = 0;
+void get_mandelbrot_iters(__m128 x0, __m128 y0, unsigned int iters[4]) {
     /*------------------------------------------------------------------------*/
     /* Current position                                                       */
-    float x = x0;
-    float y = y0;
+    __m128 x = x0;
+    __m128 y = y0;
+    __m128 two_mul = _mm_set_ps1(2);
+    __m128 compare = _mm_set_ps1(PointOutRadiusSq);
+    // unsigned int cmp[4] = {1};
     /*------------------------------------------------------------------------*/
     /* Running iterations                                                     */
-    for(; n < MaxIters; n++) {
+    for(unsigned int n = 0; n < MaxIters; n++) {
         /*--------------------------------------------------------------------*/
         /* Getting new point value                                            */
-        float x_new = x * x - y * y + x0;
-        y = 2 * x * y + y0;
-        x = x_new;
-        /*--------------------------------------------------------------------*/
-        /* Ending if it reached circle with radius sqrt(PointOutRadiusSq)     */
-        if(x * x + y * y > PointOutRadiusSq) {
+        __m128 x_square = _mm_mul_ps(x, x);
+        __m128 y_square = _mm_mul_ps(y, y);
+
+        __m128 cmp_result = _mm_cmple_ps(_mm_add_ps(x_square, y_square), compare);
+
+        int cmp = _mm_movemask_ps(cmp_result);
+        // __m128 x_new = _mm_add_ps(_mm_sub_ps(_mm_mul_ps(x, x), _mm_mul_ps(y, y)), x0);
+        // y = _mm_mul_ps(_mm_mul_ps(two_mul, x), y) + y0;
+        // x = x_new;
+
+        if(cmp == 0) {
             break;
         }
         /*--------------------------------------------------------------------*/
+        /* Ending if it reached circle with radius sqrt(PointOutRadiusSq)     */
+        iters[0] += (unsigned int)(cmp & 0x1) >> 0u;
+        iters[1] += (unsigned int)(cmp & 0x2) >> 1u;
+        iters[2] += (unsigned int)(cmp & 0x4) >> 2u;
+        iters[3] += (unsigned int)(cmp & 0x8) >> 3u;
+
+        __m128 x_new = _mm_add_ps(_mm_sub_ps(x_square, y_square), x0);
+        y = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(x, two_mul), y), y0);
+        x = x_new;
+        /*--------------------------------------------------------------------*/
     }
     /*------------------------------------------------------------------------*/
-    /* Returning number of iterations                                         */
-    return n;
 }
 
 /*============================================================================*/
