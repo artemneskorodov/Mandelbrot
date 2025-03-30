@@ -1,4 +1,7 @@
 /*============================================================================*/
+/* This defines a number of points in one packed vector                       */
+/* Supported constants are 1, 4 and 8. They use flats, XMM's and YMM's        */
+/* respectively                                                               */
 #define RENDER_VECTOR_4
 /*============================================================================*/
 #include <stdio.h>
@@ -10,6 +13,7 @@
 #include <stdarg.h>
 #include <math.h>
 /*----------------------------------------------------------------------------*/
+/* This libraries are included only if optimization with packed floats is used*/
 #if defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
     #include <xmmintrin.h>
     #include <immintrin.h>
@@ -20,6 +24,46 @@
 #include "parse_flags.h"
 /*============================================================================*/
 
+static const char          *WindowTitle       = "Mandelbrot";
+static const unsigned int   WindowWidth       = 800;
+static const unsigned int   WindowHeight      = 600;
+static const float          WindowWidthFloat  = (float)WindowWidth;
+static const float          WindowHeightFloat = (float)WindowHeight;
+static const unsigned int   MaxIters          = 256;
+static const float          PointOutRadiusSq  = 100.f;
+static const float          DeltaTime         = 5.0;
+
+/*============================================================================*/
+
+static err_state_t      prog_ctor              (ctx_t          *ctx,
+                                                int             argc,
+                                                const char     *argv[]);
+
+static err_state_t      prog_dtor              (ctx_t          *ctx);
+
+static inline void      update_window          (ctx_t          *ctx);
+
+static err_state_t      update_position        (ctx_t          *ctx);
+
+static err_state_t      run_normal_mode        (ctx_t          *ctx);
+
+static err_state_t      run_testing_mode       (ctx_t          *ctx,
+                                                size_t          render_iters,
+                                                double         *time);
+
+static err_state_t      get_render_time        (ctx_t          *ctx);
+
+static sf::Uint32       get_point_color        (unsigned int    iters);
+
+static err_state_t      render_mandelbrot      (ctx_t          *ctx,
+                                                size_t          render_iters);
+
+static err_state_t      set_colors             (ctx_t          *ctx);
+
+/*============================================================================*/
+/* This macro is used in main to avoid writing of checking errors and calling */
+/* context destructor a lot                                                   */
+
 #define _EXIT_IF_ERROR(...) {                                                  \
     err_state_t _error_code = (__VA_ARGS__);                                   \
     if(_error_code != STATE_SUCCESS) {                                         \
@@ -28,49 +72,10 @@
     }                                                                          \
 }                                                                              \
 
-/*============================================================================*/
-
-static const char          *WindowTitle       = "Mandelbrot";
-static const unsigned int   WindowWidth       = 800;
-static const unsigned int   WindowHeight      = 600;
-static const float          WindowWidthFloat  = (float)WindowWidth;
-static const float          WindowHeightFloat = (float)WindowHeight;
-static const float          DefaultDX         = DefaultScale /
-                                                WindowWidthFloat;
-static const float          DefaultDY         = DefaultScale /
-                                                WindowHeightFloat;
-static const unsigned int   MaxIters          = 256;
-static const float          PointOutRadiusSq  = 100.f;
-static const float          DeltaTime         = 5.0;
-
-/*============================================================================*/
-
-static err_state_t          prog_ctor              (ctx_t          *ctx,
-                                                    int             argc,
-                                                    const char     *argv[]);
-
-static err_state_t          prog_dtor              (ctx_t          *ctx);
-
-static inline void          update_window          (ctx_t          *ctx);
-
-static err_state_t          update_position        (ctx_t          *ctx);
-
-static err_state_t          run_normal_mode        (ctx_t          *ctx);
-
-static err_state_t          run_testing_mode       (ctx_t          *ctx,
-                                                    size_t          point_iters,
-                                                    double         *time);
-
-static err_state_t          get_render_time        (ctx_t          *ctx);
-
-static sf::Uint32 get_point_color(unsigned int iters);
-
-static err_state_t          render_mandelbrot      (ctx_t          *ctx,
-                                                    size_t          point_iters);
-
-err_state_t set_colors(ctx_t *ctx);
-
-/*============================================================================*/
+/*----------------------------------------------------------------------------*/
+/* Main of program, creates context and read user input. Function runs modes  */
+/* which are defined by flags (testing mode which gets render time and normal */
+/* mode which draws Mandelbrot set on screen                                  */
 
 int main(int argc, const char *argv[]) {
     /*------------------------------------------------------------------------*/
@@ -92,7 +97,13 @@ int main(int argc, const char *argv[]) {
     return EXIT_SUCCESS;
 }
 
+/*----------------------------------------------------------------------------*/
+#undef _EXIT_IF_ERROR
 /*============================================================================*/
+/* Function runs rendering with different number of iterations which is       */
+/* defined by user input (look parse flags) and counts render time with least */
+/* squares method. It also writes points (number of iterations and time) to   */
+/* file which is also pushed from user with flag '--output'                   */
 
 err_state_t get_render_time(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
@@ -174,15 +185,20 @@ err_state_t get_render_time(ctx_t *ctx) {
 }
 
 /*============================================================================*/
+/* Function runs render of screen for number of times specified by parameter  */
+/* 'render_iters'. It gets start time and end time using clock_gettime() with */
+/* CLOCK_PROCESS_CPUTIME_ID parameter which allows to get procces time, so    */
+/* the results does not depend on other proccesses runned on machine.         */
+/* Funciton writes render time to 'time' in seconds.                          */
 
-err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
+err_state_t run_testing_mode(ctx_t *ctx, size_t render_iters, double *time) {
     /*------------------------------------------------------------------------*/
     /* Getting start time using clock_gettime() which is only for Linux but   */
     /* it has less error than clock() or time                                 */
     timespec start;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
     /*------------------------------------------------------------------------*/
-    _RETURN_IF_ERROR(render_mandelbrot(ctx, point_iters));
+    _RETURN_IF_ERROR(render_mandelbrot(ctx, render_iters));
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
     timespec end;
@@ -212,6 +228,10 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
     return STATE_SUCCESS;
 }
 
+/*============================================================================*/
+/* Function runs loop, which renders Mandelbrot set with current screen       */
+/* position and scale. It also allows to move, by calling update_position()   */
+
 err_state_t run_normal_mode(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
     /* Running screen until it is closed                                      */
@@ -238,16 +258,22 @@ err_state_t run_normal_mode(ctx_t *ctx) {
 
 /*============================================================================*/
 #if defined(RENDER_VECTOR_1)
-/*============================================================================*/
+/* This is conditional compilation part for rendering Mandelbrot set without  */
+/* any optimization.                                                          */
 
-err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
+/*============================================================================*/
+/* This function renders Mandelbrot set with current position for render_iters*/
+/* times. It does not use packed float numbers so this is the slowest way of  */
+/* rendering.                                                                 */
+
+err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     /*------------------------------------------------------------------------*/
     /* Creating constant that used to move point to next                      */
     const float dx = ctx->scale / WindowWidthFloat;
     const float dy = ctx->scale / WindowHeightFloat;
     /*------------------------------------------------------------------------*/
-    /* Rendering screen point_iters times                                     */
-    for(size_t iteration = 0; iteration < point_iters; iteration++) {
+    /* Rendering screen render_iters times                                    */
+    for(size_t iteration = 0; iteration < render_iters; iteration++) {
         /*--------------------------------------------------------------------*/
         /* Setting y0 to first line                                           */
         float y0 = -0.5f * ctx->scale - ctx->offset_y;
@@ -307,8 +333,15 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
 
 /*============================================================================*/
 #elif defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
+/* This is conditional compilation part with rendering mandelbrot set using   */
+/* packed float numbers                                                       */
+
 /*============================================================================*/
     #if defined(RENDER_VECTOR_4)
+    /* Macroses that are used in render function when rendering with 4 packed */
+    /* float numbers is turned on. They are provided to avoid copying of code */
+    /* for different packing sizes as rendering is used with similar functions*/
+
     /*========================================================================*/
         typedef __m128 vector_t;
         /*--------------------------------------------------------------------*/
@@ -350,6 +383,10 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
                                                                    (_value ))
     /*========================================================================*/
     #elif defined(RENDER_VECTOR_8)
+    /* Macroses that are used in render function when rendering with 8 packed */
+    /* float numbers is turned on. They are provided to avoid copying of code */
+    /* for different packing sizes as rendering is used with similar functions*/
+
     /*========================================================================*/
         typedef __m256 vector_t;
         /*--------------------------------------------------------------------*/
@@ -397,8 +434,11 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
     /*========================================================================*/
     #endif
 /*============================================================================*/
+/* This function renders Mandelbrot set when rendering with inrinsics is      */
+/* turned on. It uses defines that depend on number of floats in one packed   */
+/* vector.                                                                    */
 
-err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
+err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     /*------------------------------------------------------------------------*/
     /* dx_float variable is used in different places, so saving it once       */
     float     dx_float = ctx->scale / WindowWidthFloat;
@@ -425,8 +465,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
         x0_init  = _MM_ADD_PS(x0_temp, dx_temp);
     }
     /*------------------------------------------------------------------------*/
-    /* Rendering the screen point_iters times                                 */
-    for(size_t iteration = 0; iteration < point_iters; iteration++) {
+    /* Rendering the screen render_iters times                                */
+    for(size_t iteration = 0; iteration < render_iters; iteration++) {
         /*--------------------------------------------------------------------*/
         /* Pointer to current position in image                               */
         vectorI_t *image = (vectorI_t *)ctx->image;
@@ -518,15 +558,23 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
 /*============================================================================*/
 #endif
 /*============================================================================*/
+/* Function converts context image to colors. It is expected that every item  */
+/* is set to number of iterations for this specific point to escape from      */
+/* Mandelbrot set.                                                            */
 
 err_state_t set_colors(ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    /* Converting each pixel iterations number to escape to its color         */
     for(unsigned int elem = 0; elem < WindowHeight * WindowWidth; elem++) {
         ctx->image[elem] = get_point_color(ctx->image[elem]);
     }
+    /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
 
 /*============================================================================*/
+/* Returns point color depending on number of iterations to leave from        */
+/* Mandelbrot set. It is expected that parameter is less than MaxIters        */
 
 sf::Uint32 get_point_color(unsigned int iters) {
     /*------------------------------------------------------------------------*/
@@ -562,6 +610,7 @@ sf::Uint32 get_point_color(unsigned int iters) {
 }
 
 /*============================================================================*/
+/* Drawing image on screen.                                                   */
 
 inline void update_window(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
@@ -577,6 +626,8 @@ inline void update_window(ctx_t *ctx) {
 }
 
 /*============================================================================*/
+/* Mandelbrot context constructor which gets user input, creates image and    */
+/* window to draw on.                                                         */
 
 err_state_t prog_ctor(ctx_t *ctx, int argc, const char *argv[]) {
     /*------------------------------------------------------------------------*/
@@ -620,6 +671,7 @@ err_state_t prog_ctor(ctx_t *ctx, int argc, const char *argv[]) {
 }
 
 /*============================================================================*/
+/* Mandelbrot context destructor. It frees image which is allocated           */
 
 err_state_t prog_dtor(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
@@ -630,6 +682,7 @@ err_state_t prog_dtor(ctx_t *ctx) {
 }
 
 /*============================================================================*/
+/* Writes log message. This function works for long time as it calls flush()  */
 
 int log_msg(const char *format, ...) {
     /*------------------------------------------------------------------------*/
@@ -654,6 +707,7 @@ int log_msg(const char *format, ...) {
 }
 
 /*============================================================================*/
+/* Writes error message. This function works for long time as it calls flush()*/
 
 int err_msg(const char *format, ...) {
     /*------------------------------------------------------------------------*/
@@ -678,6 +732,8 @@ int err_msg(const char *format, ...) {
 }
 
 /*============================================================================*/
+/* Checking if the window is closed and updating position depending on pressed*/
+/* keys.                                                                      */
 
 err_state_t update_position(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
