@@ -292,14 +292,16 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
     const __m128 dx = _mm_set_ps1(4 * dx_float);
     const __m128 compare = _mm_set_ps1(PointOutRadiusSq);
     const __m128i mask = _mm_set1_epi32(1);
+    const __m128 dx_initializer = _mm_set_ps(3.f * dx_float, 2.f * dx_float, dx_float, 0.f);
+    const float y0_initializer = -0.5f * ctx->scale - ctx->offset_y;
+    const float x0_initializer = -0.5f * ctx->scale - ctx->offset_x;
     for(size_t iteration = 0; iteration < point_iters; iteration++) {
         __m128i *image = (__m128i *)ctx->image;
-        __m128 y0 = _mm_set_ps1(-0.5f * ctx->scale - ctx->offset_y);
+        __m128 y0 = _mm_set_ps1(y0_initializer);
 
         for(unsigned int yi = 0; yi < WindowHeight; yi++, y0 = _mm_add_ps(y0, dy)) {
-            float x0_point = -0.5f * ctx->scale - ctx->offset_x;
-            __m128 x0 = _mm_set_ps(x0_point + 3 * dx_float, x0_point + 2 * dx_float, x0_point + dx_float, x0_point);
-
+            __m128 x0 = _mm_set_ps1(x0_initializer);
+            x0 = _mm_add_ps(x0, dx_initializer);
             for(unsigned int xi = 0; xi < WindowWidth; xi += 4, x0 = _mm_add_ps(x0, dx)) {
                 __m128i iters = _mm_set1_epi32(0);
                 __m128 x = x0;
@@ -310,7 +312,7 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
                     __m128 two_xy = _mm_mul_ps(x, y);
                     two_xy = _mm_add_ps(two_xy, two_xy);
 
-                    __m128i cmp_result = (__m128i)_mm_cmple_ps(_mm_add_ps(x_square, y_square), compare);
+                    __m128i cmp_result = _mm_castps_si128(_mm_cmple_ps(_mm_add_ps(x_square, y_square), compare));
                     // int cmp = _mm_movemask_ps(cmp_result);
                     if(_mm_testz_si128(cmp_result, cmp_result)) {
                         break;

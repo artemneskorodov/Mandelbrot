@@ -31,7 +31,6 @@ struct ctx_t {
     sf::RenderWindow    window;
     sf::Texture         texture;
     sf::Sprite          box;
-    sf::Uint32         *image;
     bool                testing_mode;
     size_t              iters_point_min;
     size_t              step_value;
@@ -40,6 +39,7 @@ struct ctx_t {
     float               offset_x;
     float               offset_y;
     float               scale;
+    alignas(16) sf::Uint32         *image;
 };
 
 /*============================================================================*/
