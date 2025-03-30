@@ -1,4 +1,6 @@
 /*============================================================================*/
+#define RENDER_VECTOR_4
+/*============================================================================*/
 #include <stdio.h>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
@@ -7,7 +9,11 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include <math.h>
-#include <xmmintrin.h>
+/*----------------------------------------------------------------------------*/
+#if defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
+    #include <xmmintrin.h>
+    #include <immintrin.h>
+#endif
 /*----------------------------------------------------------------------------*/
 #include "colors.h"
 #include "mandelbrot.h"
@@ -57,10 +63,12 @@ static err_state_t          run_testing_mode       (ctx_t          *ctx,
 
 static err_state_t          get_render_time        (ctx_t          *ctx);
 
-static sf::Uint32    get_point_color        (unsigned int    iters);
+static sf::Uint32 get_point_color(unsigned int iters);
 
-static  unsigned int          get_mandelbrot_iters   (float           x0,
-                                                    float           y0);
+static err_state_t          render_mandelbrot      (ctx_t          *ctx,
+                                                    size_t          point_iters);
+
+err_state_t set_colors(ctx_t *ctx);
 
 /*============================================================================*/
 
@@ -174,42 +182,7 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
     timespec start;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
     /*------------------------------------------------------------------------*/
-    /* Y-coordinate of first point on screen                                  */
-    float y0 = -0.5f * DefaultScale - DefaultOffsetY;
-    float dy = DefaultDY;
-    float dx = DefaultDX;
-
-    for(unsigned int yi = 0; yi < WindowHeight; yi++) {
-        float x0 = -0.5f * DefaultScale - DefaultOffsetX;
-
-        for(unsigned int xi = 0; xi < WindowWidth; xi++) {
-            for(size_t i = 0; i < point_iters; i++) {
-                unsigned int iters = 0;
-                float x = x0;
-                float y = y0;
-
-                for(; iters < MaxIters; iters++) {
-                    float x_square = x * x;
-                    float y_square = y * y;
-                    float xy = 2.f * x * y;
-
-                    int cmp_result = (x_square + y_square > PointOutRadiusSq);
-
-                    if(cmp_result) {
-                        break;
-                    }
-
-                    y = xy + y0;
-                    x = x_square - y_square + x0;
-                }
-                /*------------------------------------------------------------*/
-                ctx->image[xi + WindowWidth * yi] = get_point_color(iters);
-                /*------------------------------------------------------------*/
-            }
-            x0 = x0 + dx;
-        }
-        y0 = y0 + dy;
-    }
+    _RETURN_IF_ERROR(render_mandelbrot(ctx, point_iters));
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
     timespec end;
@@ -239,65 +212,17 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
     return STATE_SUCCESS;
 }
 
-/*============================================================================*/
-
 err_state_t run_normal_mode(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
     /* Running screen until it is closed                                      */
     while(true) {
         /*--------------------------------------------------------------------*/
         log_msg("\t-Frame start\n");
-        /*--------------------------------------------------------------------*/
-        /* Checking keys and window closed event                              */
         _RETURN_IF_ERROR(update_position(ctx));
         /*--------------------------------------------------------------------*/
-        /* First point Y-coordinate                                           */
-        float y0 = -0.5f * ctx->scale - ctx->offset_y;
+        _RETURN_IF_ERROR(render_mandelbrot(ctx, 1));
         /*--------------------------------------------------------------------*/
-        /* Addition to point Y-coordinate for each                            */
-        float dy = ctx->scale / WindowHeightFloat;
-        /*--------------------------------------------------------------------*/
-        /* Running through all points                                         */
-        for(unsigned int yi = 0; yi < WindowHeight; yi++) {
-            /*----------------------------------------------------------------*/
-            /* X-coordinate of first point in line determined by y0           */
-            float x0 = -0.5f * ctx->scale - ctx->offset_x;
-            float dx = ctx->scale / WindowWidthFloat;
-            /*----------------------------------------------------------------*/
-            /* Addition to point X-coordinate                                 */
-            // float dx = _mm_set_ps1(dx_point;
-            /*----------------------------------------------------------------*/
-            /* Running through line                                           */
-            for(unsigned int xi = 0; xi < WindowWidth; xi++) {
-                /*------------------------------------------------------------*/
-                /* Number of iterations to get out of circle with radius      */
-                /* sqrt(PointOutRadiusSq)                                     */
-                unsigned int iters = 0;
-
-                float x = x0;
-                float y = y0;
-                for(; iters < MaxIters; iters++) {
-                    float x_square = x * x;
-                    float y_square = y * y;
-                    float xy = 2.f * x * y;
-
-                    int cmp_result = (x_square + y_square > PointOutRadiusSq);
-
-                    if(cmp_result) {
-                        break;
-                    }
-
-                    y = xy + y0;
-                    x = x_square - y_square + x0;
-                }
-                /*------------------------------------------------------------*/
-                ctx->image[xi + WindowWidth * yi] = get_point_color(iters);
-                /*------------------------------------------------------------*/
-                x0 = x0 + dx;
-            }
-            /*----------------------------------------------------------------*/
-            y0 = y0 + dy;
-        }
+        _RETURN_IF_ERROR(set_colors(ctx));
         /*--------------------------------------------------------------------*/
         log_msg("\t-Updated points\n");
         /*--------------------------------------------------------------------*/
@@ -308,6 +233,296 @@ err_state_t run_normal_mode(ctx_t *ctx) {
         /*--------------------------------------------------------------------*/
     }
     /*------------------------------------------------------------------------*/
+    return STATE_SUCCESS;
+}
+
+/*============================================================================*/
+#if defined(RENDER_VECTOR_1)
+/*============================================================================*/
+
+err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
+    /*------------------------------------------------------------------------*/
+    /* Creating constant that used to move point to next                      */
+    const float dx = ctx->scale / WindowWidthFloat;
+    const float dy = ctx->scale / WindowHeightFloat;
+    /*------------------------------------------------------------------------*/
+    /* Rendering screen point_iters times                                     */
+    for(size_t iteration = 0; iteration < point_iters; iteration++) {
+        /*--------------------------------------------------------------------*/
+        /* Setting y0 to first line                                           */
+        float y0 = -0.5f * ctx->scale - ctx->offset_y;
+        /*--------------------------------------------------------------------*/
+        /* Creating pointer to current pixel                                  */
+        sf::Uint32 *image = ctx->image;
+        /*--------------------------------------------------------------------*/
+        /* Running through lines                                              */
+        for(unsigned int yi = 0; yi < WindowHeight; yi++, y0 += dy) {
+            /*----------------------------------------------------------------*/
+            /* Setting x0 to first pixel in line                              */
+            float x0 = -0.5f * ctx->scale - ctx->offset_x;
+            /*----------------------------------------------------------------*/
+            /* Running through points in line                                 */
+            for(unsigned int xi = 0; xi < WindowWidth; xi++, x0 += dx) {
+                /*------------------------------------------------------------*/
+                /* Variable to store number of iterations to escape           */
+                unsigned int iters = 0;
+                /*------------------------------------------------------------*/
+                /* Current point position                                     */
+                float x = x0;
+                float y = y0;
+                /*------------------------------------------------------------*/
+                for(; iters < MaxIters; iters++) {
+                    /*--------------------------------------------------------*/
+                    /* Creating x^2, y^2 and 2xy                              */
+                    float x_squared = x * x;
+                    float y_squared = y * y;
+                    float two_x_y = x * y * 2.f;
+                    /*--------------------------------------------------------*/
+                    /* Checking if escaped                                    */
+                    if(x_squared + y_squared > PointOutRadiusSq) {
+                        break;
+                    }
+                    /*--------------------------------------------------------*/
+                    /* Updating point coordinates                             */
+                    /* x_new = x^2 - y^2 + x0                                 */
+                    /* y_new = 2xy + y0                                       */
+                    x = x_squared - y_squared + x0;
+                    y = two_x_y + y0;
+                    /*--------------------------------------------------------*/
+                }
+                /*------------------------------------------------------------*/
+                /* Setting pixel to number of iteration to escape which can   */
+                /* be converted to color later                                */
+                *image = iters;
+                image++;
+                /*------------------------------------------------------------*/
+            }
+            /*----------------------------------------------------------------*/
+        }
+        /*--------------------------------------------------------------------*/
+    }
+    /*------------------------------------------------------------------------*/
+    return STATE_SUCCESS;
+}
+
+/*============================================================================*/
+#elif defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
+/*============================================================================*/
+    #if defined(RENDER_VECTOR_4)
+    /*========================================================================*/
+        typedef __m128 vector_t;
+        /*--------------------------------------------------------------------*/
+        typedef __m128i vectorI_t;
+        /*--------------------------------------------------------------------*/
+        static const unsigned int PackedSize = 4;
+        /*--------------------------------------------------------------------*/
+        #define _MM_CREATE_INITIALIZER(_dx)     _mm_set_ps        (3.f * (_dx),\
+                                                                   2.f * (_dx),\
+                                                                   1.f * (_dx),\
+                                                                   0.f)
+        /*--------------------------------------------------------------------*/
+        #define _MM_SET1_PS(_value)             _mm_set1_ps       ((_value ))
+        /*--------------------------------------------------------------------*/
+        #define _MM_SET1_EPI32(_value)          _mm_set1_epi32    ((_value ))
+        /*--------------------------------------------------------------------*/
+        #define _MM_ADD_PS(_value1, _value2)    _mm_add_ps        ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_MUL_PS(_value1, _value2)    _mm_mul_ps        ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_SUB_PS(_value1, _value2)    _mm_sub_ps        ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_ADD_EPI32(_value1, _value2) _mm_add_epi32     ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_CMPLE_PS(_value1, _value2)  _mm_cmple_ps      ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_TEST_SI(_value1, _value2)   _mm_testz_si128   ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_AND_SI(_value1, _value2)    _mm_and_si128     ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_STORE_SI(_dst, _value)      _mm_store_si128   ((_dst   ),  \
+                                                                   (_value ))
+    /*========================================================================*/
+    #elif defined(RENDER_VECTOR_8)
+    /*========================================================================*/
+        typedef __m256 vector_t;
+        /*--------------------------------------------------------------------*/
+        typedef __m256i vectorI_t;
+        /*--------------------------------------------------------------------*/
+        static const unsigned int PackedSize = 8;
+        /*--------------------------------------------------------------------*/
+        #define _MM_CREATE_INITIALIZER(_dx)     _mm256_set_ps     (7.f * (_dx),\
+                                                                   6.f * (_dx),\
+                                                                   5.f * (_dx),\
+                                                                   4.f * (_dx),\
+                                                                   3.f * (_dx),\
+                                                                   2.f * (_dx),\
+                                                                   1.f * (_dx),\
+                                                                   0.f)
+        /*--------------------------------------------------------------------*/
+        #define _MM_SET1_PS(_value)             _mm256_set1_ps    ((_value ))
+        /*--------------------------------------------------------------------*/
+        #define _MM_SET1_EPI32(_value)          _mm256_set1_epi32 ((_value ))
+        /*--------------------------------------------------------------------*/
+        #define _MM_ADD_PS(_value1, _value2)    _mm256_add_ps     ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_MUL_PS(_value1, _value2)    _mm256_mul_ps     ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_SUB_PS(_value1, _value2)    _mm256_sub_ps     ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_ADD_EPI32(_value1, _value2) _mm256_add_epi32  ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_CMPLE_PS(_value1, _value2)  _mm256_cmp_ps     ((_value1),  \
+                                                                   (_value2),  \
+                                                                    18)
+        /*--------------------------------------------------------------------*/
+        #define _MM_TEST_SI(_value1, _value2)   _mm256_testz_si256((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_AND_SI(_value1, _value2)    _mm256_and_si256  ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_STORE_SI(_dst, _value)      _mm256_store_si256((_dst   ),  \
+                                                                   (_value ))
+    /*========================================================================*/
+    #endif
+/*============================================================================*/
+
+err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
+    /*------------------------------------------------------------------------*/
+    /* dx_float variable is used in different places, so saving it once       */
+    float     dx_float = ctx->scale / WindowWidthFloat;
+    /*------------------------------------------------------------------------*/
+    /* Delat for point for each loop iteration                                */
+    vector_t  dy       = _MM_SET1_PS(ctx->scale / WindowHeightFloat);
+    vector_t  dx       = _MM_SET1_PS((float)PackedSize * dx_float);
+    /*------------------------------------------------------------------------*/
+    /* Radius to compare with to check that point is escaped                  */
+    vector_t  escape_r = _MM_SET1_PS(PointOutRadiusSq);
+    /*------------------------------------------------------------------------*/
+    /* Mask to use result of _mm_cmple_ps() as addition to iters variable     */
+    vectorI_t mask     = _MM_SET1_EPI32(1);
+    /*------------------------------------------------------------------------*/
+    /* Creating initializer constant for y0 (with PackedSize points)          */
+    vector_t  y0_init  = _MM_SET1_PS(-0.5f * ctx->scale - ctx->offset_y);
+    /*------------------------------------------------------------------------*/
+    /* Creating initializer constant for x0 (with PackedSize points)          */
+    /* Temp variables use to avoid using of registers                         */
+    vector_t  x0_init  = {0};
+    {
+        vector_t  x0_temp  = _MM_SET1_PS(-0.5f * ctx->scale - ctx->offset_x);
+        vector_t  dx_temp  = _MM_CREATE_INITIALIZER(dx_float);
+        x0_init  = _MM_ADD_PS(x0_temp, dx_temp);
+    }
+    /*------------------------------------------------------------------------*/
+    /* Rendering the screen point_iters times                                 */
+    for(size_t iteration = 0; iteration < point_iters; iteration++) {
+        /*--------------------------------------------------------------------*/
+        /* Pointer to current position in image                               */
+        vectorI_t *image = (vectorI_t *)ctx->image;
+        /*--------------------------------------------------------------------*/
+        /* Current y0 vector                                                  */
+        vector_t y0 = y0_init;
+        /*--------------------------------------------------------------------*/
+        /* Running through lines                                              */
+        for(unsigned int yi = 0; yi < WindowHeight; yi++) {
+            /*----------------------------------------------------------------*/
+            /* Current x0 vector                                              */
+            vector_t x0 = x0_init;
+            /*----------------------------------------------------------------*/
+            /* Running through all points on line                             */
+            for(unsigned int xi = 0; xi < WindowWidth; xi += PackedSize) {
+                /*------------------------------------------------------------*/
+                /* This is vector with number of iterations to escape         */
+                vectorI_t iters = {0};
+                /*------------------------------------------------------------*/
+                /* Current points vector                                      */
+                vector_t x = x0;
+                vector_t y = y0;
+                /*------------------------------------------------------------*/
+                for(unsigned int n = 0; n < MaxIters; n++) {
+                    /*--------------------------------------------------------*/
+                    /* Creating x^2, y^2 and 2 * x * y in the start when we   */
+                    /* are sure that x and y are in registers                 */
+                    vector_t x_square = _MM_MUL_PS(x, x);
+                    vector_t y_square = _MM_MUL_PS(y, y);
+                    vector_t two_xy = _MM_MUL_PS(x, y);
+                    two_xy = _MM_ADD_PS(two_xy, two_xy);
+                    /*--------------------------------------------------------*/
+                    /* Getting compare result for points and escape radius    */
+                    vector_t r_square = _MM_ADD_PS(x_square, y_square);
+                    vectorI_t cmp_result = (vectorI_t)_MM_CMPLE_PS(r_square,
+                                                                   escape_r);
+                    /*--------------------------------------------------------*/
+                    /* Checking if all points escaped                         */
+                    if(_MM_TEST_SI(cmp_result, cmp_result)) {
+                        break;
+                    }
+                    /*--------------------------------------------------------*/
+                    /* Applying bitmask that sets not escaped points elements */
+                    /* to ones and adding them to iters vector                */
+                    cmp_result = _MM_AND_SI(cmp_result, mask);
+                    iters = _MM_ADD_EPI32(iters, cmp_result);
+                    /*--------------------------------------------------------*/
+                    /* Next point coordinates                                 */
+                    /* x_new = x^2 - y^2 + x0                                 */
+                    /* y_new = 2xy + y0                                       */
+                    x = _MM_SUB_PS(x_square, y_square);
+                    x = _MM_ADD_PS(x, x0);
+                    y = _MM_ADD_PS(two_xy, y0);
+                    /*--------------------------------------------------------*/
+                }
+                /*------------------------------------------------------------*/
+                /* Setting screen element to escape iters that can be         */
+                /* converted to color later and moving screen pointer         */
+                _MM_STORE_SI(image, iters);
+                image++;
+                /*------------------------------------------------------------*/
+                /* Moving x0 to next set of PackedSize points                 */
+                x0 = _MM_ADD_PS(x0, dx);
+                /*------------------------------------------------------------*/
+            }
+            /*----------------------------------------------------------------*/
+            /* Moving y0 to next line                                         */
+            y0 = _MM_ADD_PS(y0, dy);
+            /*----------------------------------------------------------------*/
+        }
+        /*--------------------------------------------------------------------*/
+    }
+    /*------------------------------------------------------------------------*/
+    return STATE_SUCCESS;
+}
+
+/*============================================================================*/
+    #undef _MM_CREATE_INITIALIZER
+    #undef _MM_SET1_PS
+    #undef _MM_SET1_EPI32
+    #undef _MM_ADD_PS
+    #undef _MM_MUL_PS
+    #undef _MM_SUB_PS
+    #undef _MM_ADD_EPI32
+    #undef _MM_CMPLE_PS
+    #undef _MM_TEST_SI
+    #undef _MM_AND_SI
+    #undef _MM_STORE_SI
+/*============================================================================*/
+#endif
+/*============================================================================*/
+
+err_state_t set_colors(ctx_t *ctx) {
+    for(unsigned int elem = 0; elem < WindowHeight * WindowWidth; elem++) {
+        ctx->image[elem] = get_point_color(ctx->image[elem]);
+    }
     return STATE_SUCCESS;
 }
 
@@ -344,54 +559,6 @@ sf::Uint32 get_point_color(unsigned int iters) {
     /* Setting color to black if it did not reached the circle                */
     return (sf::Uint32)(255 << 24);
     /*------------------------------------------------------------------------*/
-}
-
-/*============================================================================*/
-
-unsigned int get_mandelbrot_iters(float x0, float y0) {
-/*±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±*/
-    {
-    /*------------------------------------------------------------------------*/
-    /* Current position                                                       */
-    float x = x0;
-    float y = y0;
-    // __m128 two_mul = _mm_set_ps1(2);
-    // __m128 compare = _mm_set_ps1(PointOutRadiusSq);
-    // unsigned int cmp[4] = {1};
-    /*------------------------------------------------------------------------*/
-    /* Running iterations                                                     */
-    for(unsigned int n = 0; n < MaxIters; n++) {
-        /*--------------------------------------------------------------------*/
-        /* Getting new point value                                            */
-        float x_square = x * x;
-        float y_square = y * y;
-
-//         __m128 cmp_result = _mm_cmple_ps(_mm_add_ps(x_square, y_square), compare);
-//
-//         int cmp = _mm_movemask_ps(cmp_result);
-        // __m128 x_new = _mm_add_ps(_mm_sub_ps(_mm_mul_ps(x, x), _mm_mul_ps(y, y)), x0);
-        // y = _mm_mul_ps(_mm_mul_ps(two_mul, x), y) + y0;
-        // x = x_new;
-
-        if(x_square + y_square > PointOutRadiusSq) {
-            return n;
-        }
-        /*--------------------------------------------------------------------*/
-        /* Ending if it reached circle with radius sqrt(PointOutRadiusSq)     */
-        // iters[0] += (unsigned int)(cmp & 0x1) >> 0u;
-        // iters[1] += (unsigned int)(cmp & 0x2) >> 1u;
-        // iters[2] += (unsigned int)(cmp & 0x4) >> 2u;
-        // iters[3] += (unsigned int)(cmp & 0x8) >> 3u;
-
-        float x_new = x_square - y_square + x0;
-        y = 2 * x * y + y0;
-        x = x_new;
-        /*--------------------------------------------------------------------*/
-    }
-    /*------------------------------------------------------------------------*/
-    return MaxIters;
-    }
-/*±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±*/
 }
 
 /*============================================================================*/

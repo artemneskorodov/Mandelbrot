@@ -1,10 +1,17 @@
-FLAGS:=										\
+CXXFLAGS:=									\
+-O2											\
+-mavx2  									\
+-mavx   									\
+-msse   									\
+-msse2  									\
+-msse3  									\
+-msse4.1									\
+-msse4.2									\
 -I include									\
 -no-pie 									\
 -D _DEBUG									\
 -ggdb3										\
 -std=c++17									\
--O0											\
 -Wall										\
 -Wextra										\
 -Weffc++									\
@@ -62,41 +69,28 @@ FLAGS:=										\
 -fno-omit-frame-pointer						\
 -Wlarger-than=8192							\
 -Wstack-usage=8192							\
+-march=native 								\
 -Werror=vla									\
 -fsanitize=address,alignment,bool,bounds,enum,float-cast-overflow,float-divide-by-zero,integer-divide-by-zero,leak,nonnull-attribute,null,object-size,return,returns-nonnull-attribute,shift,signed-integer-overflow,undefined,unreachable,vla-bound,vptr
 
+LIBS:=-lsfml-system -lsfml-graphics -lsfml-window
 BINDIR:=bin
+LOGDIR:=logs
 OUTPUT:=Mandelbrot
 SRCDIR:=source
 SOURCE:=$(wildcard ${SRCDIR}/*.cpp)
 OBJECTS:=$(addsuffix .o,$(addprefix ${BINDIR}/,$(basename $(notdir ${SOURCE}))))
 
-MANDELBROT_SRC:=mandelbrot_core
-MANDELBROT_NO_OPT_OBJ:=${BINDIR}/no_opt.o
-MANDELBROT_LOOPS_OPT_OBJ:=${BINDIR}/loops_opt.o
-MANDELBROT_NO_OPT_SRC:=${MANDELBROT_SRC}/no_opt2.cpp
-MANDELBROT_LOOPS_OPT_SRC:=${MANDELBROT_SRC}/loops_opt.cpp
-
-# all: loops_opt
-
-loops_opt: ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ}
-	g++ -mavx2 ${FLAGS} ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ} -o ${BINDIR}/${OUTPUT} -lsfml-system -lsfml-graphics -lsfml-window
-no_opt: ${OBJECTS} ${MANDELBROT_NO_OPT_OBJ}
-	g++ -mavx2 ${FLAGS} ${OBJECTS} ${MANDELBROT_NO_OPT_OBJ} -o ${BINDIR}/${OUTPUT} -lsfml-system -lsfml-graphics -lsfml-window
-
-${OBJECTS}: ${SOURCE} ${BINDIR}
-	$(foreach SRC,${SOURCE},$(shell g++ -c ${SRC} ${FLAGS} -o $(addsuffix .o,$(addprefix ${BINDIR}/,$(basename $(notdir ${SRC}))))))
-${MANDELBROT_LOOPS_OPT_OBJ}: ${MANDELBROT_LOOPS_OPT_SRC}
-	g++ -c -mavx2 ${FLAGS} ${MANDELBROT_LOOPS_OPT_SRC} -o ${MANDELBROT_LOOPS_OPT_OBJ}
-${MANDELBROT_LOOPS_OPT_SRC}:
-
-${MANDELBROT_NO_OPT_OBJ}: ${MANDELBROT_NO_OPT_SRC}
-	g++ -c -mavx2 ${FLAGS} ${MANDELBROT_NO_OPT_SRC} -o ${MANDELBROT_NO_OPT_OBJ}
-${MANDELBROT_NO_OPT_SRC}:
-
+all: ${OBJECTS}
+	g++ ${CXXFLAGS} ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ} -o ${BINDIR}/${OUTPUT} ${LIBS}
+${OBJECTS}: ${SOURCE} ${BINDIR} ${LOGDIR}
+	$(foreach SRC,${SOURCE},$(shell g++ -c ${SRC} ${CXXFLAGS} -o $(addsuffix .o,$(addprefix ${BINDIR}/,$(basename $(notdir ${SRC}))))))
 clean:
 	rm -rf ${BINDIR}
+	rm -rf ${LOGDIR}
 ${SOURCE}:
 
 ${BINDIR}:
 	mkdir ${BINDIR}
+${LOGDIR}:
+	mkdir ${LOGDIR}
