@@ -74,15 +74,15 @@ OBJECTS:=$(addsuffix .o,$(addprefix ${BINDIR}/,$(basename $(notdir ${SOURCE}))))
 MANDELBROT_SRC:=mandelbrot_core
 MANDELBROT_NO_OPT_OBJ:=${BINDIR}/no_opt.o
 MANDELBROT_LOOPS_OPT_OBJ:=${BINDIR}/loops_opt.o
-MANDELBROT_NO_OPT_SRC:=${MANDELBROT_SRC}/no_opt.cpp
+MANDELBROT_NO_OPT_SRC:=${MANDELBROT_SRC}/no_opt2.cpp
 MANDELBROT_LOOPS_OPT_SRC:=${MANDELBROT_SRC}/loops_opt.cpp
 
 # all: loops_opt
 
 loops_opt: ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ}
-	g++ -mavx2 ${FLAGS} ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ} -o ${BINDIR}/no_opt -lsfml-system -lsfml-graphics -lsfml-window
+	g++ -mavx2 ${FLAGS} ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ} -o ${BINDIR}/${OUTPUT} -lsfml-system -lsfml-graphics -lsfml-window
 no_opt: ${OBJECTS} ${MANDELBROT_NO_OPT_OBJ}
-	g++ -mavx2 ${FLAGS} ${OBJECTS} ${MANDELBROT_NO_OPT_OBJ} -o ${BINDIR}/intrs_opt -lsfml-system -lsfml-graphics -lsfml-window
+	g++ -mavx2 ${FLAGS} ${OBJECTS} ${MANDELBROT_NO_OPT_OBJ} -o ${BINDIR}/${OUTPUT} -lsfml-system -lsfml-graphics -lsfml-window
 
 ${OBJECTS}: ${SOURCE} ${BINDIR}
 	$(foreach SRC,${SOURCE},$(shell g++ -c ${SRC} ${FLAGS} -o $(addsuffix .o,$(addprefix ${BINDIR}/,$(basename $(notdir ${SRC}))))))

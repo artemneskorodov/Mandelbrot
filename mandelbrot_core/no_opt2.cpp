@@ -8,7 +8,6 @@
 #include <stdarg.h>
 #include <math.h>
 #include <xmmintrin.h>
-#include <immintrin.h>
 /*----------------------------------------------------------------------------*/
 #include "colors.h"
 #include "mandelbrot.h"
@@ -24,10 +23,6 @@
 }                                                                              \
 
 /*============================================================================*/
-
-#define RENDER_VECTOR_4
-// #define RENDER_VECTOR_4
-// #define RENDER_VECTOR_8
 
 static const char          *WindowTitle       = "Mandelbrot";
 static const unsigned int   WindowWidth       = 800;
@@ -62,12 +57,10 @@ static err_state_t          run_testing_mode       (ctx_t          *ctx,
 
 static err_state_t          get_render_time        (ctx_t          *ctx);
 
-static sf::Uint32 get_point_color(unsigned int iters);
+static sf::Uint32    get_point_color        (unsigned int    iters);
 
-static err_state_t          render_mandelbrot      (ctx_t          *ctx,
-                                                    size_t          point_iters);
-
-err_state_t set_colors(ctx_t *ctx);
+static  unsigned int          get_mandelbrot_iters   (float           x0,
+                                                    float           y0);
 
 /*============================================================================*/
 
@@ -181,7 +174,42 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
     timespec start;
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
     /*------------------------------------------------------------------------*/
-    _RETURN_IF_ERROR(render_mandelbrot(ctx, point_iters));
+    /* Y-coordinate of first point on screen                                  */
+    float y0 = -0.5f * DefaultScale - DefaultOffsetY;
+    float dy = DefaultDY;
+    float dx = DefaultDX;
+
+    for(unsigned int yi = 0; yi < WindowHeight; yi++) {
+        float x0 = -0.5f * DefaultScale - DefaultOffsetX;
+
+        for(unsigned int xi = 0; xi < WindowWidth; xi++) {
+            for(size_t i = 0; i < point_iters; i++) {
+                unsigned int iters = 0;
+                float x = x0;
+                float y = y0;
+
+                for(; iters < MaxIters; iters++) {
+                    float x_square = x * x;
+                    float y_square = y * y;
+                    float xy = 2.f * x * y;
+
+                    int cmp_result = (x_square + y_square > PointOutRadiusSq);
+
+                    if(cmp_result) {
+                        break;
+                    }
+
+                    y = xy + y0;
+                    x = x_square - y_square + x0;
+                }
+                /*------------------------------------------------------------*/
+                ctx->image[xi + WindowWidth * yi] = get_point_color(iters);
+                /*------------------------------------------------------------*/
+            }
+            x0 = x0 + dx;
+        }
+        y0 = y0 + dy;
+    }
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
     timespec end;
@@ -210,6 +238,80 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t point_iters, double *time) {
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
+
+/*============================================================================*/
+
+err_state_t run_normal_mode(ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    /* Running screen until it is closed                                      */
+    while(true) {
+        /*--------------------------------------------------------------------*/
+        log_msg("\t-Frame start\n");
+        /*--------------------------------------------------------------------*/
+        /* Checking keys and window closed event                              */
+        _RETURN_IF_ERROR(update_position(ctx));
+        /*--------------------------------------------------------------------*/
+        /* First point Y-coordinate                                           */
+        float y0 = -0.5f * ctx->scale - ctx->offset_y;
+        /*--------------------------------------------------------------------*/
+        /* Addition to point Y-coordinate for each                            */
+        float dy = ctx->scale / WindowHeightFloat;
+        /*--------------------------------------------------------------------*/
+        /* Running through all points                                         */
+        for(unsigned int yi = 0; yi < WindowHeight; yi++) {
+            /*----------------------------------------------------------------*/
+            /* X-coordinate of first point in line determined by y0           */
+            float x0 = -0.5f * ctx->scale - ctx->offset_x;
+            float dx = ctx->scale / WindowWidthFloat;
+            /*----------------------------------------------------------------*/
+            /* Addition to point X-coordinate                                 */
+            // float dx = _mm_set_ps1(dx_point;
+            /*----------------------------------------------------------------*/
+            /* Running through line                                           */
+            for(unsigned int xi = 0; xi < WindowWidth; xi++) {
+                /*------------------------------------------------------------*/
+                /* Number of iterations to get out of circle with radius      */
+                /* sqrt(PointOutRadiusSq)                                     */
+                unsigned int iters = 0;
+
+                float x = x0;
+                float y = y0;
+                for(; iters < MaxIters; iters++) {
+                    float x_square = x * x;
+                    float y_square = y * y;
+                    float xy = 2.f * x * y;
+
+                    int cmp_result = (x_square + y_square > PointOutRadiusSq);
+
+                    if(cmp_result) {
+                        break;
+                    }
+
+                    y = xy + y0;
+                    x = x_square - y_square + x0;
+                }
+                /*------------------------------------------------------------*/
+                ctx->image[xi + WindowWidth * yi] = get_point_color(iters);
+                /*------------------------------------------------------------*/
+                x0 = x0 + dx;
+            }
+            /*----------------------------------------------------------------*/
+            y0 = y0 + dy;
+        }
+        /*--------------------------------------------------------------------*/
+        log_msg("\t-Updated points\n");
+        /*--------------------------------------------------------------------*/
+        /* Updating window                                                    */
+        update_window(ctx);
+        /*--------------------------------------------------------------------*/
+        log_msg("\t-Frame end\n");
+        /*--------------------------------------------------------------------*/
+    }
+    /*------------------------------------------------------------------------*/
+    return STATE_SUCCESS;
+}
+
+/*============================================================================*/
 
 sf::Uint32 get_point_color(unsigned int iters) {
     /*------------------------------------------------------------------------*/
@@ -244,123 +346,52 @@ sf::Uint32 get_point_color(unsigned int iters) {
     /*------------------------------------------------------------------------*/
 }
 
-err_state_t set_colors(ctx_t *ctx) {
-    for(unsigned int elem = 0; elem < WindowHeight * WindowWidth; elem++) {
-        ctx->image[elem] = get_point_color(ctx->image[elem]);
-    }
-    return STATE_SUCCESS;
-}
-
-#if defined(RENDER_VECTOR_1)
-
-err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
-    const float dx = ctx->scale / WindowWidthFloat;
-    const float dy = ctx->scale / WindowHeightFloat;
-
-    for(size_t iteration = 0; iteration < point_iters; iteration++) {
-        float y0 = -0.5f * ctx->scale - ctx->offset_y;
-        for(unsigned int yi = 0; yi < WindowHeight; yi++, y0 += dy) {
-            float x0 = -0.5f * ctx->scale - ctx->offset_x;
-            for(unsigned int xi = 0; xi < WindowWidth; xi++, x0 += dx) {
-                unsigned int iters = 0;
-                float x = x0;
-                float y = y0;
-                for(; iters < MaxIters; iters++) {
-                    float x_squared = x * x;
-                    float y_squared = y * y;
-                    float two_x_y = 2 * x * y;
-
-                    if(x_squared + y_squared > PointOutRadiusSq) {
-                        break;
-                    }
-
-                    x = x_squared - y_squared + x0;
-                    y = two_x_y + y0;
-                }
-                ctx->image[xi + WindowWidth * yi] = iters;
-            }
-        }
-    }
-    return STATE_SUCCESS;
-}
-
-#elif defined(RENDER_VECTOR_4)
-
-err_state_t render_mandelbrot(ctx_t *ctx, size_t point_iters) {
-    const float dx_float = ctx->scale / WindowWidthFloat;
-    const __m128 dy = _mm_set_ps1(ctx->scale / WindowHeightFloat);
-    const __m128 dx = _mm_set_ps1(4 * dx_float);
-    const __m128 compare = _mm_set_ps1(PointOutRadiusSq);
-    const __m128i mask = _mm_set1_epi32(1);
-    for(size_t iteration = 0; iteration < point_iters; iteration++) {
-        __m128i *image = (__m128i *)ctx->image;
-        __m128 y0 = _mm_set_ps1(-0.5f * ctx->scale - ctx->offset_y);
-
-        for(unsigned int yi = 0; yi < WindowHeight; yi++, y0 = _mm_add_ps(y0, dy)) {
-            float x0_point = -0.5f * ctx->scale - ctx->offset_x;
-            __m128 x0 = _mm_set_ps(x0_point + 3 * dx_float, x0_point + 2 * dx_float, x0_point + dx_float, x0_point);
-
-            for(unsigned int xi = 0; xi < WindowWidth; xi += 4, x0 = _mm_add_ps(x0, dx)) {
-                __m128i iters = _mm_set1_epi32(0);
-                __m128 x = x0;
-                __m128 y = y0;
-                for(unsigned int n = 0; n < MaxIters; n++) {
-                    __m128 x_square = _mm_mul_ps(x, x);
-                    __m128 y_square = _mm_mul_ps(y, y);
-                    __m128 two_xy = _mm_mul_ps(x, y);
-                    two_xy = _mm_add_ps(two_xy, two_xy);
-
-                    __m128i cmp_result = (__m128i)_mm_cmple_ps(_mm_add_ps(x_square, y_square), compare);
-                    // int cmp = _mm_movemask_ps(cmp_result);
-                    if(_mm_testz_si128(cmp_result, cmp_result)) {
-                        break;
-                    }
-
-                    iters = _mm_add_epi32(iters, _mm_and_si128(cmp_result, mask));
-
-                    x = _mm_sub_ps(x_square, y_square);
-                    x = _mm_add_ps(x, x0);
-                    y = _mm_add_ps(two_xy, y0);
-                }
-                /*------------------------------------------------------------*/
-                _mm_store_si128(image, iters);
-                image++;
-                /*------------------------------------------------------------*/
-            }
-        }
-    }
-    return STATE_SUCCESS;
-}
-
-#elif defined(RENDER_VECTOR_8)
-
-
-#endif
-
 /*============================================================================*/
 
-err_state_t run_normal_mode(ctx_t *ctx) {
+unsigned int get_mandelbrot_iters(float x0, float y0) {
+/*±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±*/
+    {
     /*------------------------------------------------------------------------*/
-    /* Running screen until it is closed                                      */
-    while(true) {
+    /* Current position                                                       */
+    float x = x0;
+    float y = y0;
+    // __m128 two_mul = _mm_set_ps1(2);
+    // __m128 compare = _mm_set_ps1(PointOutRadiusSq);
+    // unsigned int cmp[4] = {1};
+    /*------------------------------------------------------------------------*/
+    /* Running iterations                                                     */
+    for(unsigned int n = 0; n < MaxIters; n++) {
         /*--------------------------------------------------------------------*/
-        log_msg("\t-Frame start\n");
-        _RETURN_IF_ERROR(update_position(ctx));
+        /* Getting new point value                                            */
+        float x_square = x * x;
+        float y_square = y * y;
+
+//         __m128 cmp_result = _mm_cmple_ps(_mm_add_ps(x_square, y_square), compare);
+//
+//         int cmp = _mm_movemask_ps(cmp_result);
+        // __m128 x_new = _mm_add_ps(_mm_sub_ps(_mm_mul_ps(x, x), _mm_mul_ps(y, y)), x0);
+        // y = _mm_mul_ps(_mm_mul_ps(two_mul, x), y) + y0;
+        // x = x_new;
+
+        if(x_square + y_square > PointOutRadiusSq) {
+            return n;
+        }
         /*--------------------------------------------------------------------*/
-        _RETURN_IF_ERROR(render_mandelbrot(ctx, 1));
-        /*--------------------------------------------------------------------*/
-        _RETURN_IF_ERROR(set_colors(ctx));
-        /*--------------------------------------------------------------------*/
-        log_msg("\t-Updated points\n");
-        /*--------------------------------------------------------------------*/
-        /* Updating window                                                    */
-        update_window(ctx);
-        /*--------------------------------------------------------------------*/
-        log_msg("\t-Frame end\n");
+        /* Ending if it reached circle with radius sqrt(PointOutRadiusSq)     */
+        // iters[0] += (unsigned int)(cmp & 0x1) >> 0u;
+        // iters[1] += (unsigned int)(cmp & 0x2) >> 1u;
+        // iters[2] += (unsigned int)(cmp & 0x4) >> 2u;
+        // iters[3] += (unsigned int)(cmp & 0x8) >> 3u;
+
+        float x_new = x_square - y_square + x0;
+        y = 2 * x * y + y0;
+        x = x_new;
         /*--------------------------------------------------------------------*/
     }
     /*------------------------------------------------------------------------*/
-    return STATE_SUCCESS;
+    return MaxIters;
+    }
+/*±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±±*/
 }
 
 /*============================================================================*/

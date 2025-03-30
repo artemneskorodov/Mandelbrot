@@ -143,6 +143,9 @@ err_state_t test_handler(ctx_t      *ctx,
     ctx->steps_num       = strtoul(argv[*current_flag + 3], NULL, 10);
     *current_flag += 3;
     ctx->testing_mode = true;
+    ctx->offset_x   = DefaultOffsetX;
+    ctx->offset_y   = DefaultOffsetY;
+    ctx->scale      = DefaultScale;
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
