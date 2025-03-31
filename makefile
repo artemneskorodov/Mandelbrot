@@ -139,6 +139,7 @@ all:
 	$(info ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓)
 	$(info ┃ This make file does not support standart 'make' command                      ┃)
 	$(info ┃ Please specify your machine by typing 'make x86' or 'make arm'               ┃)
+	$(info ┃ Number of packed floats is defined by macro in 'source/mandelbrot.cpp'       ┃)
 	$(info ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛)
 arm: obj_arm
 	g++ ${ARM_CXXFLAGS} ${OBJECTS} ${MANDELBROT_LOOPS_OPT_OBJ} -o ${BINDIR}/${OUTPUT} -L/opt/homebrew/opt/sfml@2/lib ${LIBS}
