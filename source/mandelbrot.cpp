@@ -2,7 +2,7 @@
 /* This defines a number of points in one packed vector                       */
 /* Supported constants are 1, 4 and 8. They use flats, XMM's and YMM's        */
 /* respectively                                                               */
-#define RENDER_VECTOR_1
+#define RENDER_VECTOR_4
 /*============================================================================*/
 #include <stdio.h>
 #include <SFML/Window.hpp>
@@ -528,7 +528,7 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
                                              dx_float,
                                        2.f * dx_float,
                                        3.f * dx_float};
-            vector_t    dx_temp     = vld1q_f32(dx_temp_values);
+            vector_t    dx_temp     = vld1q_f32(dx_arr);
         /*--------------------------------------------------------------------*/
         #endif
         /*--------------------------------------------------------------------*/
