@@ -22,15 +22,15 @@
 
 ### Без оптимизации
 График зависимости времени рендеринга от количества итераций при отсутствии оптимизации:
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/3dd94e5f8ad5876d68269f2d1b6581e864cfda2e/img/desmos-graph.png.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/3dd94e5f8ad5876d68269f2d1b6581e864cfda2e/desmos-graph.png.png)
 Время затраченное на просчёт одного кадра: T1 = (0.074956 ± 0.000099) секунд
 ### Оптимизация с данными упакованными по 4 элемента
 График зависимости времени рендеринга от количества итериций при оптимизации с использованием 4-ёх упакованных элементов
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/3dd94e5f8ad5876d68269f2d1b6581e864cfda2e/img/desmos-graph-2.png.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/3dd94e5f8ad5876d68269f2d1b6581e864cfda2e/desmos-graph-2.png.png)
 Время затраченное на просчёт одного кадра: T2 = (0.018268 ± 0.000020) секунд
 ### Оптимизация с данными упакованными по 8 элементов
 График зависимости времени рендеринга от количества итериций при оптимизации с использованием 8-ми упакованных элементов
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/3dd94e5f8ad5876d68269f2d1b6581e864cfda2e/img/desmos-graph-3.png.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/3dd94e5f8ad5876d68269f2d1b6581e864cfda2e/desmos-graph-3.png.png)
 Время затраченное на просчёт одного кадра: T3 = (0.009500 ± 0.000011) секунд
 
 
