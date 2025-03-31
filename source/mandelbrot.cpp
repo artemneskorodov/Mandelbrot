@@ -14,9 +14,22 @@
 #include <math.h>
 /*----------------------------------------------------------------------------*/
 /* This libraries are included only if optimization with packed floats is used*/
-#if defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
-    #include <xmmintrin.h>
-    #include <immintrin.h>
+#if defined(RENDER_VECTOR_4)
+    #if defined(__x86_64__) or defined(_M_X64)
+        #include <xmmintrin.h>
+        #include <immintrin.h>
+    #elif defined(__ARM_NEON__)
+        #include <arm_neon.h>
+    #else
+        #error Packed 4 floats are only supported on X86 and ARM Neon
+    #endif
+#elif defined(RENDER_VECTOR_8)
+    #if defined(__x86_64__) or defined(_M_X64)
+        #include <xmmintrin.h>
+        #include <immintrin.h>
+    #else
+        #error Packed 8 floats are only supported on X86
+    #endif
 #endif
 /*----------------------------------------------------------------------------*/
 #include "colors.h"
@@ -31,7 +44,8 @@ static const float          WindowWidthFloat  = (float)WindowWidth;
 static const float          WindowHeightFloat = (float)WindowHeight;
 static const unsigned int   MaxIters          = 256;
 static const float          PointOutRadiusSq  = 100.f;
-static const float          DeltaTime         = 5.0;
+static const float          DeltaTime         = 100.f;
+static const float          ScaleMult         = 1.1f;
 
 /*============================================================================*/
 
@@ -332,7 +346,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
 }
 
 /*============================================================================*/
-#elif defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
+#elif (defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)) and               \
+      (defined(__x86_64__)      or defined(_M_X64)         )
 /* This is conditional compilation part with rendering mandelbrot set using   */
 /* packed float numbers                                                       */
 
@@ -556,6 +571,123 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     #undef _MM_AND_SI
     #undef _MM_STORE_SI
 /*============================================================================*/
+#elif defined(RENDER_VECTOR_4) and defined(__ARM_NEON__)
+
+err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
+    /*------------------------------------------------------------------------*/
+    /* dx_float variable is used in different places, so saving it once       */
+    float        dx_float   = ctx->scale / WindowWidthFloat;
+    /*------------------------------------------------------------------------*/
+    /* Delat for point for each loop iteration                                */
+    float32x4_t  dy         = vdupq_n_f32(ctx->scale / WindowHeightFloat);
+    float32x4_t  dx         = vdupq_n_f32(4.f * dx_float);
+    /*------------------------------------------------------------------------*/
+    /* Radius to compare with to check that point is escaped                  */
+    float32x4_t  escape_r   = vdupq_n_f32(PointOutRadiusSq);
+    /*------------------------------------------------------------------------*/
+    /* Mask to use result of _mm_cmple_ps() as addition to iters variable     */
+    uint32x4_t   mask       = vdupq_n_u32(1);
+    /*------------------------------------------------------------------------*/
+    /* Creating initializer constant for y0 (with PackedSize points)          */
+    float32x4_t  y0_init    = vdupq_n_f32(-0.5f * ctx->scale - ctx->offset_y);
+    /*------------------------------------------------------------------------*/
+    /* Creating initializer constant for x0 (with PackedSize points)          */
+    /* Temp variables use to avoid using of registers                         */
+    float32x4_t  x0_init  = {0};
+    {
+        float32x4_t  x0_temp  = vdupq_n_f32(-0.5f * ctx->scale - ctx->offset_x);
+        float32_t    dx_temp_values[] = {0.f,
+                                               dx_float,
+                                         2.f * dx_float,
+                                         3.f * dx_float};
+        float32x4_t  dx_temp  = vld1q_f32(dx_temp_values);
+        x0_init             = vaddq_f32(x0_temp, dx_temp);
+    }
+    /*------------------------------------------------------------------------*/
+    /* Rendering the screen render_iters times                                */
+    for(size_t iteration = 0; iteration < render_iters; iteration++) {
+        /*--------------------------------------------------------------------*/
+        /* Pointer to current position in image                               */
+        uint32_t *image = (uint32_t *)ctx->image;
+        /*--------------------------------------------------------------------*/
+        /* Current y0 vector                                                  */
+        float32x4_t y0 = y0_init;
+        /*--------------------------------------------------------------------*/
+        /* Running through lines                                              */
+        for(unsigned int yi = 0; yi < WindowHeight; yi++) {
+            /*----------------------------------------------------------------*/
+            /* Current x0 vector                                              */
+            float32x4_t x0 = x0_init;
+            /*----------------------------------------------------------------*/
+            /* Running through all points on line                             */
+            for(unsigned int xi = 0; xi < WindowWidth; xi += 4) {
+                /*------------------------------------------------------------*/
+                /* This is vector with number of iterations to escape         */
+                uint32x4_t iters = {0};
+                /*------------------------------------------------------------*/
+                /* Current points vector                                      */
+                float32x4_t x = x0;
+                float32x4_t y = y0;
+                /*------------------------------------------------------------*/
+                for(unsigned int n = 0; n < MaxIters; n++) {
+                    /*--------------------------------------------------------*/
+                    /* Creating x^2, y^2 and 2 * x * y in the start when we   */
+                    /* are sure that x and y are in registers                 */
+                    float32x4_t x_square = vmulq_f32(x, x);
+                    float32x4_t y_square = vmulq_f32(y, y);
+                    float32x4_t two_xy   = vmulq_f32(x, y);
+                    two_xy = vaddq_f32(two_xy, two_xy);
+                    /*--------------------------------------------------------*/
+                    /* Getting compare result for points and escape radius    */
+                    float32x4_t r_square   = vaddq_f32(x_square, y_square);
+                    uint32x4_t  cmp_result = vcleq_f32(r_square, escape_r);
+                    /*--------------------------------------------------------*/
+                    /* Loading compare result with low bits set to 1 if result*/
+                    /* is true to array of unsigned integers                  */
+                    cmp_result = vandq_u32(cmp_result, mask);
+                    uint32_t cmp[4] = {};
+                    vst1q_u32(cmp, cmp_result);
+                    /*--------------------------------------------------------*/
+                    /* Checking if all points left from circle                */
+                    if(cmp[0] == 0 &&
+                       cmp[1] == 0 &&
+                       cmp[2] == 0 &&
+                       cmp[3] == 0) {
+                        break;
+                    }
+                    /*--------------------------------------------------------*/
+                    /* Adding one to each element that did not reached the    */
+                    /* escape radius                                          */
+                    iters = vaddq_u32(iters, cmp_result);
+                    /*--------------------------------------------------------*/
+                    /* Next point coordinates                                 */
+                    /* x_new = x^2 - y^2 + x0                                 */
+                    /* y_new = 2xy + y0                                       */
+                    x = vsubq_f32(x_square, y_square);
+                    x = vaddq_f32(x, x0);
+                    y = vaddq_f32(two_xy, y0);
+                    /*--------------------------------------------------------*/
+                }
+                /*------------------------------------------------------------*/
+                /* Setting screen element to escape iters that can be         */
+                /* converted to color later and moving screen pointer         */
+                vst1q_u32(image, iters);
+                image += 4;
+                /*------------------------------------------------------------*/
+                /* Moving x0 to next set of PackedSize points                 */
+                x0 = vaddq_f32(x0, dx);
+                /*------------------------------------------------------------*/
+            }
+            /*----------------------------------------------------------------*/
+            /* Moving y0 to next line                                         */
+            y0 = vaddq_f32(y0, dy);
+            /*----------------------------------------------------------------*/
+        }
+        /*--------------------------------------------------------------------*/
+    }
+    /*------------------------------------------------------------------------*/
+    return STATE_SUCCESS;
+}
 #endif
 /*============================================================================*/
 /* Function converts context image to colors. It is expected that every item  */
@@ -615,7 +747,7 @@ sf::Uint32 get_point_color(unsigned int iters) {
 inline void update_window(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
     /* Updating texture with points array                                     */
-    ctx->texture.update((sf::Uint8 *)ctx->image);
+    ctx->texture.update((sf::Uint8 *)ctx->image, WindowWidth, WindowHeight, 0, 0);
     /*------------------------------------------------------------------------*/
     /* Drawing sprite with this texture which fulls the screen                */
     ctx->window.draw(ctx->box);
@@ -762,10 +894,10 @@ err_state_t update_position(ctx_t *ctx) {
     /* Updating scale                                                         */
     if(larger != smaller) {
         if(larger) {
-            ctx->scale /= 1.5f;
+            ctx->scale /= ScaleMult;
         }
         else {
-            ctx->scale *= 1.5f;
+            ctx->scale *= ScaleMult;
         }
     }
     /*------------------------------------------------------------------------*/
