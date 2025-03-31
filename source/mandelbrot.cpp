@@ -346,13 +346,12 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
 }
 
 /*============================================================================*/
-#elif (defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)) and               \
-      (defined(__x86_64__)      or defined(_M_X64)         )
+#elif defined(RENDER_VECTOR_4) or defined(RENDER_VECTOR_8)
 /* This is conditional compilation part with rendering mandelbrot set using   */
 /* packed float numbers                                                       */
 
 /*============================================================================*/
-    #if defined(RENDER_VECTOR_4)
+    #if defined(RENDER_VECTOR_4) and (defined(__x86_64__) or defined(_M_X64))
     /* Macroses that are used in render function when rendering with 4 packed */
     /* float numbers is turned on. They are provided to avoid copying of code */
     /* for different packing sizes as rendering is used with similar functions*/
@@ -361,6 +360,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         typedef __m128 vector_t;
         /*--------------------------------------------------------------------*/
         typedef __m128i vectorI_t;
+        /*--------------------------------------------------------------------*/
+        typedef __m128i *pixel_ptr_t;
         /*--------------------------------------------------------------------*/
         static const unsigned int PackedSize = 4;
         /*--------------------------------------------------------------------*/
@@ -397,7 +398,7 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         #define _MM_STORE_SI(_dst, _value)      _mm_store_si128   ((_dst   ),  \
                                                                    (_value ))
     /*========================================================================*/
-    #elif defined(RENDER_VECTOR_8)
+    #elif defined(RENDER_VECTOR_8) and (defined(__x86_64__) or defined(_M_X64))
     /* Macroses that are used in render function when rendering with 8 packed */
     /* float numbers is turned on. They are provided to avoid copying of code */
     /* for different packing sizes as rendering is used with similar functions*/
@@ -406,6 +407,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         typedef __m256 vector_t;
         /*--------------------------------------------------------------------*/
         typedef __m256i vectorI_t;
+        /*--------------------------------------------------------------------*/
+        typedef __m256i *pixel_ptr_t;
         /*--------------------------------------------------------------------*/
         static const unsigned int PackedSize = 8;
         /*--------------------------------------------------------------------*/
@@ -447,6 +450,42 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         #define _MM_STORE_SI(_dst, _value)      _mm256_store_si256((_dst   ),  \
                                                                    (_value ))
     /*========================================================================*/
+    #elif defined(RENDER_VECTOR_4) and defined(__ARM_NEON__)
+
+    /*========================================================================*/
+        typedef float32x4_t vector_t;
+        /*--------------------------------------------------------------------*/
+        typedef uint32x4_t vectorI_t;
+        /*--------------------------------------------------------------------*/
+        typedef uint32_t *pixel_ptr_t;
+        /*--------------------------------------------------------------------*/
+        static const unsigned int PackedSize = 4;
+        /*--------------------------------------------------------------------*/
+        #define _MM_SET1_PS(_value)             vdupq_n_f32       ((_value ))
+        /*--------------------------------------------------------------------*/
+        #define _MM_SET1_EPI32(_value)          vdupq_n_u32       ((_value ))
+        /*--------------------------------------------------------------------*/
+        #define _MM_ADD_PS(_value1, _value2)    vaddq_f32         ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_MUL_PS(_value1, _value2)    vmulq_f32         ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_SUB_PS(_value1, _value2)    vsubq_f32         ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_ADD_EPI32(_value1, _value2) vaddq_u32         ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_CMPLE_PS(_value1, _value2)  vcleq_f32         ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_AND_SI(_value1, _value2)    vandq_u32         ((_value1),  \
+                                                                   (_value2))
+        /*--------------------------------------------------------------------*/
+        #define _MM_STORE_SI(_dst, _value)      vst1q_u32         ((_dst   ),  \
+                                                                   (_value ))
+    /*========================================================================*/
     #endif
 /*============================================================================*/
 /* This function renders Mandelbrot set when rendering with inrinsics is      */
@@ -475,8 +514,24 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     /* Temp variables use to avoid using of registers                         */
     vector_t  x0_init  = {0};
     {
-        vector_t  x0_temp  = _MM_SET1_PS(-0.5f * ctx->scale - ctx->offset_x);
-        vector_t  dx_temp  = _MM_CREATE_INITIALIZER(dx_float);
+        vector_t x0_temp = _MM_SET1_PS(-0.5f * ctx->scale - ctx->offset_x);
+        /*--------------------------------------------------------------------*/
+        #if (defined(__x86_64__) or defined(_M_X64))
+        /* This is way to create vector with one element in X86               */
+        /*--------------------------------------------------------------------*/
+            vector_t    dx_temp     = _MM_CREATE_INITIALIZER(dx_float);
+        /*--------------------------------------------------------------------*/
+        /* This is way to create vector with one element in ARM               */
+        #elif defined(__ARM_NEON__)
+        /*--------------------------------------------------------------------*/
+            float32_t   dx_arr[]    = {0.f,
+                                             dx_float,
+                                       2.f * dx_float,
+                                       3.f * dx_float};
+            vector_t    dx_temp     = vld1q_f32(dx_temp_values);
+        /*--------------------------------------------------------------------*/
+        #endif
+        /*--------------------------------------------------------------------*/
         x0_init  = _MM_ADD_PS(x0_temp, dx_temp);
     }
     /*------------------------------------------------------------------------*/
@@ -484,7 +539,7 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     for(size_t iteration = 0; iteration < render_iters; iteration++) {
         /*--------------------------------------------------------------------*/
         /* Pointer to current position in image                               */
-        vectorI_t *image = (vectorI_t *)ctx->image;
+        uint32_t *image = (uint32_t *)ctx->image;
         /*--------------------------------------------------------------------*/
         /* Current y0 vector                                                  */
         vector_t y0 = y0_init;
@@ -519,14 +574,35 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
                     vectorI_t cmp_result = (vectorI_t)_MM_CMPLE_PS(r_square,
                                                                    escape_r);
                     /*--------------------------------------------------------*/
+                    /* Aplying bitmask to cmp_result that sets each non zero  */
+                    /* element to 1 in low bit                                */
+                    cmp_result = _MM_AND_SI(cmp_result, mask);
+                    /*--------------------------------------------------------*/
                     /* Checking if all points escaped                         */
-                    if(_MM_TEST_SI(cmp_result, cmp_result)) {
-                        break;
-                    }
+                    /*--------------------------------------------------------*/
+                    #if defined(__x86_64__) or defined(_M_X64)
+                    /* This is way of compilation for X86                     */
+                    /*--------------------------------------------------------*/
+                        if(_MM_TEST_SI(cmp_result, cmp_result)) {
+                            break;
+                        }
+                    /*--------------------------------------------------------*/
+                    #elif defined(__ARM_NEON__)
+                    /* This is way of compilation for ARM                     */
+                    /*--------------------------------------------------------*/
+                        uint32_t cmp_array[4] = {};
+                        vst1q_u32(cmp_array, cmp_result);
+                        if(cmp_array[0] == 0 &&
+                           cmp_array[1] == 0 &&
+                           cmp_array[2] == 0 &&
+                           cmp_array[3] == 0) {
+                            break;
+                        }
+                    /*--------------------------------------------------------*/
+                    #endif
                     /*--------------------------------------------------------*/
                     /* Applying bitmask that sets not escaped points elements */
                     /* to ones and adding them to iters vector                */
-                    cmp_result = _MM_AND_SI(cmp_result, mask);
                     iters = _MM_ADD_EPI32(iters, cmp_result);
                     /*--------------------------------------------------------*/
                     /* Next point coordinates                                 */
@@ -540,8 +616,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
                 /*------------------------------------------------------------*/
                 /* Setting screen element to escape iters that can be         */
                 /* converted to color later and moving screen pointer         */
-                _MM_STORE_SI(image, iters);
-                image++;
+                _MM_STORE_SI((pixel_ptr_t)image, iters);
+                image += PackedSize;
                 /*------------------------------------------------------------*/
                 /* Moving x0 to next set of PackedSize points                 */
                 x0 = _MM_ADD_PS(x0, dx);
@@ -571,124 +647,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     #undef _MM_AND_SI
     #undef _MM_STORE_SI
 /*============================================================================*/
-#elif defined(RENDER_VECTOR_4) and defined(__ARM_NEON__)
-
-err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
-    /*------------------------------------------------------------------------*/
-    /* dx_float variable is used in different places, so saving it once       */
-    float        dx_float   = ctx->scale / WindowWidthFloat;
-    /*------------------------------------------------------------------------*/
-    /* Delat for point for each loop iteration                                */
-    float32x4_t  dy         = vdupq_n_f32(ctx->scale / WindowHeightFloat);
-    float32x4_t  dx         = vdupq_n_f32(4.f * dx_float);
-    /*------------------------------------------------------------------------*/
-    /* Radius to compare with to check that point is escaped                  */
-    float32x4_t  escape_r   = vdupq_n_f32(PointOutRadiusSq);
-    /*------------------------------------------------------------------------*/
-    /* Mask to use result of _mm_cmple_ps() as addition to iters variable     */
-    uint32x4_t   mask       = vdupq_n_u32(1);
-    /*------------------------------------------------------------------------*/
-    /* Creating initializer constant for y0 (with PackedSize points)          */
-    float32x4_t  y0_init    = vdupq_n_f32(-0.5f * ctx->scale - ctx->offset_y);
-    /*------------------------------------------------------------------------*/
-    /* Creating initializer constant for x0 (with PackedSize points)          */
-    /* Temp variables use to avoid using of registers                         */
-    float32x4_t  x0_init  = {0};
-    {
-        float32x4_t  x0_temp  = vdupq_n_f32(-0.5f * ctx->scale - ctx->offset_x);
-        float32_t    dx_temp_values[] = {0.f,
-                                               dx_float,
-                                         2.f * dx_float,
-                                         3.f * dx_float};
-        float32x4_t  dx_temp  = vld1q_f32(dx_temp_values);
-        x0_init             = vaddq_f32(x0_temp, dx_temp);
-    }
-    /*------------------------------------------------------------------------*/
-    /* Rendering the screen render_iters times                                */
-    for(size_t iteration = 0; iteration < render_iters; iteration++) {
-        /*--------------------------------------------------------------------*/
-        /* Pointer to current position in image                               */
-        uint32_t *image = (uint32_t *)ctx->image;
-        /*--------------------------------------------------------------------*/
-        /* Current y0 vector                                                  */
-        float32x4_t y0 = y0_init;
-        /*--------------------------------------------------------------------*/
-        /* Running through lines                                              */
-        for(unsigned int yi = 0; yi < WindowHeight; yi++) {
-            /*----------------------------------------------------------------*/
-            /* Current x0 vector                                              */
-            float32x4_t x0 = x0_init;
-            /*----------------------------------------------------------------*/
-            /* Running through all points on line                             */
-            for(unsigned int xi = 0; xi < WindowWidth; xi += 4) {
-                /*------------------------------------------------------------*/
-                /* This is vector with number of iterations to escape         */
-                uint32x4_t iters = {0};
-                /*------------------------------------------------------------*/
-                /* Current points vector                                      */
-                float32x4_t x = x0;
-                float32x4_t y = y0;
-                /*------------------------------------------------------------*/
-                for(unsigned int n = 0; n < MaxIters; n++) {
-                    /*--------------------------------------------------------*/
-                    /* Creating x^2, y^2 and 2 * x * y in the start when we   */
-                    /* are sure that x and y are in registers                 */
-                    float32x4_t x_square = vmulq_f32(x, x);
-                    float32x4_t y_square = vmulq_f32(y, y);
-                    float32x4_t two_xy   = vmulq_f32(x, y);
-                    two_xy = vaddq_f32(two_xy, two_xy);
-                    /*--------------------------------------------------------*/
-                    /* Getting compare result for points and escape radius    */
-                    float32x4_t r_square   = vaddq_f32(x_square, y_square);
-                    uint32x4_t  cmp_result = vcleq_f32(r_square, escape_r);
-                    /*--------------------------------------------------------*/
-                    /* Loading compare result with low bits set to 1 if result*/
-                    /* is true to array of unsigned integers                  */
-                    cmp_result = vandq_u32(cmp_result, mask);
-                    uint32_t cmp[4] = {};
-                    vst1q_u32(cmp, cmp_result);
-                    /*--------------------------------------------------------*/
-                    /* Checking if all points left from circle                */
-                    if(cmp[0] == 0 &&
-                       cmp[1] == 0 &&
-                       cmp[2] == 0 &&
-                       cmp[3] == 0) {
-                        break;
-                    }
-                    /*--------------------------------------------------------*/
-                    /* Adding one to each element that did not reached the    */
-                    /* escape radius                                          */
-                    iters = vaddq_u32(iters, cmp_result);
-                    /*--------------------------------------------------------*/
-                    /* Next point coordinates                                 */
-                    /* x_new = x^2 - y^2 + x0                                 */
-                    /* y_new = 2xy + y0                                       */
-                    x = vsubq_f32(x_square, y_square);
-                    x = vaddq_f32(x, x0);
-                    y = vaddq_f32(two_xy, y0);
-                    /*--------------------------------------------------------*/
-                }
-                /*------------------------------------------------------------*/
-                /* Setting screen element to escape iters that can be         */
-                /* converted to color later and moving screen pointer         */
-                vst1q_u32(image, iters);
-                image += 4;
-                /*------------------------------------------------------------*/
-                /* Moving x0 to next set of PackedSize points                 */
-                x0 = vaddq_f32(x0, dx);
-                /*------------------------------------------------------------*/
-            }
-            /*----------------------------------------------------------------*/
-            /* Moving y0 to next line                                         */
-            y0 = vaddq_f32(y0, dy);
-            /*----------------------------------------------------------------*/
-        }
-        /*--------------------------------------------------------------------*/
-    }
-    /*------------------------------------------------------------------------*/
-    return STATE_SUCCESS;
-}
 #endif
+
 /*============================================================================*/
 /* Function converts context image to colors. It is expected that every item  */
 /* is set to number of iterations for this specific point to escape from      */
