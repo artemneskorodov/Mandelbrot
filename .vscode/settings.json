@@ -1,0 +1,19 @@
+{
+    "files.associations": {
+        "*.kvm": "c",
+        "*.s": "nasm",
+        "array": "cpp",
+        "deque": "cpp",
+        "string": "cpp",
+        "unordered_map": "cpp",
+        "vector": "cpp",
+        "string_view": "cpp",
+        "initializer_list": "cpp",
+        "cmath": "cpp"
+    },
+    "files.watcherInclude": [
+        "*/include",
+        "/root/dev/Mandelbrot/include"
+    ],
+    "C_Cpp.default.configurationProvider": "ms-vscode.makefile-tools"
+}
