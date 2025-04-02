@@ -37,15 +37,16 @@
 #include "parse_flags.h"
 /*============================================================================*/
 
-static const char          *WindowTitle       = "Mandelbrot";
-static const unsigned int   WindowWidth       = 800;
-static const unsigned int   WindowHeight      = 600;
-static const float          WindowWidthFloat  = (float)WindowWidth;
-static const float          WindowHeightFloat = (float)WindowHeight;
-static const unsigned int   MaxIters          = 256;
-static const float          PointOutRadiusSq  = 100.f;
-static const float          DeltaTime         = 100.f;
-static const float          ScaleMult         = 1.2f;
+static const char          *WindowTitle         = "Mandelbrot";
+static const unsigned int   WindowWidth         = 800;
+static const unsigned int   WindowHeight        = 600;
+static const float          WindowWidthFloat    = (float)WindowWidth;
+static const float          WindowHeightFloat   = (float)WindowHeight;
+static const unsigned int   MaxIters            = 256;
+static const float          PointOutRadiusSq    = 100.f;
+static const float          DeltaTime           = 100.f;
+static const float          ScaleMult           = 1.2f;
+static const size_t         FPSMeasurementIters = 1;
 
 /*============================================================================*/
 
@@ -73,6 +74,13 @@ static err_state_t      render_mandelbrot      (ctx_t          *ctx,
                                                 size_t          render_iters);
 
 static err_state_t      set_colors             (ctx_t          *ctx);
+
+double                  get_duration           (timespec       *start,
+                                                timespec       *end);
+
+inline void             get_time_proccess      (timespec       *time);
+
+inline void             get_time_real          (timespec       *time);
 
 /*============================================================================*/
 /* This macro is used in main to avoid writing of checking errors and calling */
@@ -210,34 +218,16 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t render_iters, double *time) {
     /* Getting start time using clock_gettime() which is only for Linux but   */
     /* it has less error than clock() or time                                 */
     timespec start;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+    get_time_proccess(&start);
     /*------------------------------------------------------------------------*/
     _RETURN_IF_ERROR(render_mandelbrot(ctx, render_iters));
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
     timespec end;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &end);
-    /*------------------------------------------------------------------------*/
-    /* Determining render time                                                */
-    timespec render_time;
-    /*------------------------------------------------------------------------*/
-    /* If end nanosecond are less than start nanoseconds we add 10e9 to their */
-    /* difference and subtructing 1 from seconds difference                   */
-    if (end.tv_nsec < start.tv_nsec)
-    {
-        render_time.tv_sec  = end.tv_sec - start.tv_sec - 1;
-        render_time.tv_nsec = 1000000000 + end.tv_nsec  - start.tv_nsec;
-    }
-    /*------------------------------------------------------------------------*/
-    /* Else we just get difference of seconds and nanoseconds                 */
-    else
-    {
-        render_time.tv_sec  = end.tv_sec  - start.tv_sec;
-        render_time.tv_nsec = end.tv_nsec - start.tv_nsec;
-    }
+    get_time_proccess(&end);
     /*------------------------------------------------------------------------*/
     /* Writing answer as double in seconds                                    */
-    *time = (double)render_time.tv_sec + (double)render_time.tv_nsec / 1e9;
+    *time = get_duration(&start, &end);
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
@@ -250,21 +240,26 @@ err_state_t run_normal_mode(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
     /* Running screen until it is closed                                      */
     while(true) {
-        /*--------------------------------------------------------------------*/
-        log_msg("\t-Frame start\n");
-        _RETURN_IF_ERROR(update_position(ctx));
-        /*--------------------------------------------------------------------*/
-        _RETURN_IF_ERROR(render_mandelbrot(ctx, 1));
-        /*--------------------------------------------------------------------*/
-        _RETURN_IF_ERROR(set_colors(ctx));
-        /*--------------------------------------------------------------------*/
-        log_msg("\t-Updated points\n");
-        /*--------------------------------------------------------------------*/
-        /* Updating window                                                    */
-        update_window(ctx);
-        /*--------------------------------------------------------------------*/
-        log_msg("\t-Frame end\n");
-        /*--------------------------------------------------------------------*/
+        timespec start;
+        get_time_real(&start);
+        for(size_t i = 0; i < FPSMeasurementIters; i++) {
+            /*----------------------------------------------------------------*/
+            /* Checking keys and events, updating view                        */
+            _RETURN_IF_ERROR(update_position(ctx));
+            /*----------------------------------------------------------------*/
+            /* Counting number of iterations for each point to escape from set*/
+            _RETURN_IF_ERROR(render_mandelbrot(ctx, 1));
+            /*----------------------------------------------------------------*/
+            _RETURN_IF_ERROR(set_colors(ctx));
+            /*----------------------------------------------------------------*/
+            /* Updating window                                                */
+            update_window(ctx);
+            /*----------------------------------------------------------------*/
+        }
+        timespec end;
+        get_time_real(&end);
+        ctx->fps = (double)FPSMeasurementIters / get_duration(&start, &end);
+        fprintf(stderr, "%.10f FPS\n", ctx->fps);
     }
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
@@ -539,7 +534,7 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     for(size_t iteration = 0; iteration < render_iters; iteration++) {
         /*--------------------------------------------------------------------*/
         /* Pointer to current position in image                               */
-        uint32_t *image = (uint32_t *)ctx->image;
+        uint32_t *image = ctx->image;
         /*--------------------------------------------------------------------*/
         /* Current y0 vector                                                  */
         vector_t y0 = y0_init;
@@ -707,10 +702,15 @@ sf::Uint32 get_point_color(unsigned int iters) {
 inline void update_window(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
     /* Updating texture with points array                                     */
-    ctx->texture.update((sf::Uint8 *)ctx->image, WindowWidth, WindowHeight, 0, 0);
+    ctx->texture.update((sf::Uint8 *)ctx->image);
     /*------------------------------------------------------------------------*/
     /* Drawing sprite with this texture which fulls the screen                */
     ctx->window.draw(ctx->box);
+    /*------------------------------------------------------------------------*/
+    /* Updating FPS value                                                     */
+    sprintf(ctx->fps_buffer, "%.3f FPS", ctx->fps);
+    ctx->fps_text.setString(ctx->fps_buffer);
+    ctx->window.draw(ctx->fps_text);
     /*------------------------------------------------------------------------*/
     /* Updating window                                                        */
     ctx->window.display();
@@ -744,6 +744,13 @@ err_state_t prog_ctor(ctx_t *ctx, int argc, const char *argv[]) {
         ctx->box.setPosition(0, 0);
         ctx->box.setTexture(ctx->texture);
         ctx->box.setTextureRect(sf::IntRect(0, 0, WindowWidth, WindowHeight));
+        /*--------------------------------------------------------------------*/
+        /* Setting FPS string info                                            */
+        ctx->font.loadFromFile("font.ttf");
+        ctx->fps_text.setFont(ctx->font);
+        ctx->fps_text.setCharacterSize(30);
+        ctx->fps_text.setStyle(sf::Text::Bold);
+        ctx->fps_text.setFillColor(sf::Color::Green);
         /*--------------------------------------------------------------------*/
         log_msg("Successfully created window\n");
         /*--------------------------------------------------------------------*/
@@ -862,6 +869,43 @@ err_state_t update_position(ctx_t *ctx) {
     }
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
+}
+
+/*============================================================================*/
+
+inline void get_time_real(timespec *time) {
+    clock_gettime(CLOCK_REALTIME, time);
+}
+
+inline void get_time_proccess(timespec *time) {
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, time);
+}
+
+/*============================================================================*/
+
+double get_duration(timespec *start, timespec *end) {
+    /*------------------------------------------------------------------------*/
+    /* Determining render time                                                */
+    timespec render_time;
+    /*------------------------------------------------------------------------*/
+    /* If end nanosecond are less than start nanoseconds we add 10e9 to their */
+    /* difference and subtructing 1 from seconds difference                   */
+    if (end->tv_nsec < start->tv_nsec)
+    {
+        render_time.tv_sec  = end->tv_sec - start->tv_sec - 1;
+        render_time.tv_nsec = 1000000000 + end->tv_nsec  - start->tv_nsec;
+    }
+    /*------------------------------------------------------------------------*/
+    /* Else we just get difference of seconds and nanoseconds                 */
+    else
+    {
+        render_time.tv_sec  = end->tv_sec  - start->tv_sec;
+        render_time.tv_nsec = end->tv_nsec - start->tv_nsec;
+    }
+    /*------------------------------------------------------------------------*/
+    /* Returning duration in seconds                                          */
+    return (double)render_time.tv_sec + (double)render_time.tv_nsec / 1e9;
+    /*------------------------------------------------------------------------*/
 }
 
 /*============================================================================*/

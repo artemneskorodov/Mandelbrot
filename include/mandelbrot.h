@@ -24,30 +24,34 @@ enum err_state_t {
         return _error_code;                         \
     }                                               \
 }                                                   \
-
-/*============================================================================*/
-
-struct ctx_t {
-    sf::RenderWindow    window;
-    sf::Texture         texture;
-    sf::Sprite          box;
-    bool                testing_mode;
-    size_t              iters_point_min;
-    size_t              step_value;
-    size_t              steps_num;
-    const char         *output_file;
-    float               offset_x;
-    float               offset_y;
-    float               scale;
-    alignas(16) sf::Uint32         *image;
-};
-
 /*============================================================================*/
 
 static const float  DefaultScale    = 3.f;
 static const float  DefaultOffsetX  = 0.5f;
 static const float  DefaultOffsetY  = 0.f;
 static const size_t DefaultIters    = 10;
+static const size_t FPSBufferSize   = 32;
+
+/*============================================================================*/
+
+struct ctx_t {
+    sf::RenderWindow            window;
+    sf::Texture                 texture;
+    sf::Sprite                  box;
+    bool                        testing_mode;
+    size_t                      iters_point_min;
+    size_t                      step_value;
+    size_t                      steps_num;
+    const char                 *output_file;
+    float                       offset_x;
+    float                       offset_y;
+    float                       scale;
+    alignas(16) sf::Uint32     *image;
+    sf::Text                    fps_text;
+    char                        fps_buffer[FPSBufferSize];
+    double                      fps;
+    sf::Font                    font;
+};
 
 /*============================================================================*/
 
