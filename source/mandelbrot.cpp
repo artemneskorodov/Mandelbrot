@@ -2,7 +2,7 @@
 /* This defines a number of points in one packed vector                       */
 /* Supported constants are 1, 4 and 8. They use floats, XMM's and YMM's       */
 /* respectively                                                               */
-#define RENDER_VECTOR_4
+#define RENDER_VECTOR_1
 /*============================================================================*/
 #include <stdio.h>
 #include <SFML/Window.hpp>
@@ -13,23 +13,13 @@
 #include <stdarg.h>
 #include <math.h>
 /*----------------------------------------------------------------------------*/
-/* This libraries are included only if optimization with packed floats is used*/
-#if defined(RENDER_VECTOR_4)
-    #if defined(__x86_64__) or defined(_M_X64)
-        #include <xmmintrin.h>
-        #include <immintrin.h>
-    #elif defined(__ARM_NEON__)
-        #include <arm_neon.h>
-    #else
-        #error Packed 4 floats are only supported on X86 and ARM Neon
-    #endif
-#elif defined(RENDER_VECTOR_8)
-    #if defined(__x86_64__) or defined(_M_X64)
-        #include <xmmintrin.h>
-        #include <immintrin.h>
-    #else
-        #error Packed 8 floats are only supported on X86
-    #endif
+#if defined(__x86_64__) or defined(_M_X64)
+    #include <xmmintrin.h>
+    #include <immintrin.h>
+#elif defined(__ARM_NEON__)
+    #include <arm_neon.h>
+#else
+    #error This program obly supports x86-64 or arm with arm neon
 #endif
 /*----------------------------------------------------------------------------*/
 #include "colors.h"
