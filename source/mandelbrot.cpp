@@ -2,7 +2,11 @@
 /* This defines a number of points in one packed vector                       */
 /* Supported constants are 1, 4 and 8. They use floats, XMM's and YMM's       */
 /* respectively                                                               */
-#define RENDER_VECTOR_1
+<<<<<<< HEAD
+#define RENDER_VECTOR_8
+=======
+#define RENDER_VECTOR_8
+>>>>>>> 54b75cd3e87db77d4ed823619c6d81c2cc7d1a4f
 /*============================================================================*/
 #include <stdio.h>
 #include <SFML/Window.hpp>
