@@ -45,7 +45,7 @@ static const float          WindowHeightFloat = (float)WindowHeight;
 static const unsigned int   MaxIters          = 256;
 static const float          PointOutRadiusSq  = 100.f;
 static const float          DeltaTime         = 100.f;
-static const float          ScaleMult         = 1.1f;
+static const float          ScaleMult         = 1.2f;
 
 /*============================================================================*/
 
@@ -671,19 +671,19 @@ err_state_t set_colors(ctx_t *ctx) {
 sf::Uint32 get_point_color(unsigned int iters) {
     /*------------------------------------------------------------------------*/
     /* Red component of color                                                 */
-    sf::Uint32 color_red   = 20 + (150 - 20) * (150 - 20) * (150 - 20) *
-                                   iters     *  iters     *  iters /
-                                  (MaxIters  *  MaxIters  *  MaxIters);
+    sf::Uint32 color_red   = 30 + (150 - 20) * (150 - 20)   *
+                                   iters     *  iters       /
+                                  (MaxIters  *  MaxIters);
     /*------------------------------------------------------------------------*/
     /* Green component of color                                               */
     sf::Uint32 color_green = 10 + (100 - 10) * (100 - 10) *
-                                   iters     *  iters /
+                                   iters     *  iters     /
                                   (MaxIters  *  MaxIters);
     /*------------------------------------------------------------------------*/
     /* Blue component of color                                                */
-    sf::Uint32 color_blue  = 50 * (iters % 2) + (100 - 50) * (100 - 50) *
-                                                 iters     *  iters /
-                                                (MaxIters  *  MaxIters);
+    sf::Uint32 color_blue  = 50 * (iters % 2) + (100 - 50) *
+                                                 iters     /
+                                                (MaxIters);
     /*------------------------------------------------------------------------*/
     /* Alpha is always 100%                                                   */
     sf::Uint32 alpha = 255;
