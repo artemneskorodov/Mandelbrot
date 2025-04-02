@@ -4,7 +4,7 @@
 
 В этом проекте изучается возможность оптимизации программ с помощью векторных регистров и операций с ними. Примером для оптимизации стала отрисовка множества Мандельброта, которая требует большого количества вычислений. В программе имеется 2 режима: графический и тестовый. Тестовый режим позволяет получить количество тактов процессора, требуемое для выполнения рассчётов. Графический режим позволяет рассмотреть множество, в нём доступны перемещение с помощью стрелок на клавиатуре, а также увеличение и уменьшение масштаба с помощью клавиш 'P' и 'O' соответственно.
 
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/92f25651bbb628be3c7a50d1f02e83691fed3ff5/graphics.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/ab69d53dd5775ec35ab5d4515d274ce37909f673/graphics.png)
 
 ## Установка
 
@@ -37,54 +37,54 @@
 
 #### Без оптимизации (x86-64)
 
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/92f25651bbb628be3c7a50d1f02e83691fed3ff5/x86_opt1.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/ab69d53dd5775ec35ab5d4515d274ce37909f673/x86_opt1.png)
 
 #### Оптимизация с данными упакованными по 4 элемента (x86-64)
 
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/92f25651bbb628be3c7a50d1f02e83691fed3ff5/x86_opt4.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/ab69d53dd5775ec35ab5d4515d274ce37909f673/x86_opt4.png)
 
 #### Оптимизация с данными упакованными по 8 элементов (x86-64)
 
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/92f25651bbb628be3c7a50d1f02e83691fed3ff5/x86_opt8.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/ab69d53dd5775ec35ab5d4515d274ce37909f673/x86_opt8.png)
 
 #### Без оптимизации (arm)
 
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/92f25651bbb628be3c7a50d1f02e83691fed3ff5/arm_opt1.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/ab69d53dd5775ec35ab5d4515d274ce37909f673/arm_opt1.png)
 
 #### Оптимизация с данными упакованными по 4 элемента (arm)
 
-![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/92f25651bbb628be3c7a50d1f02e83691fed3ff5/arm_opt4.png)
+![alt text](https://raw.githubusercontent.com/artemneskorodov/Mandelbrot/ab69d53dd5775ec35ab5d4515d274ce37909f673/arm_opt4.png)
 
 ### Полученные результаты количества тактов, затрачиваемых на отрисовку одного экрана:
 
 #### Без оптимизации (x86-64)
 
 ```math
-T_x86_1 \approx 189 * 10^6
+T_{x86-1} \approx 189 * 10^6
 ```
 
 #### Оптимизация с данными упакованными по 4 элемента (x86-64)
 
 ```math
-T_x86_4 \approx 47 * 10^6
+T_{x86-4} \approx 47 * 10^6
 ```
 
 #### Оптимизация с данными упакованными по 8 элементов (x86-64)
 
 ```math
-T_x86_8 \approx 24 * 10^6
+T_{x86-8} \approx 24 * 10^6
 ```
 
 #### Без оптимизации (arm)
 
 ```math
-T_arm_1 \approx 53 * 10^6
+T_{arm-1} \approx 53 * 10^6
 ```
 
 #### Оптимизация с данными упакованными по 4 элемента (arm)
 
 ```math
-T_arm_4 \approx 14 * 10^6
+T_{arm-4} \approx 14 * 10^6
 ```
 
 
@@ -92,15 +92,15 @@ T_arm_4 \approx 14 * 10^6
 ### Полученные отношения
 
 ```math
-\frac{T_x86_1}{T_x86_4} \approx 3.99
+\frac{T_{x86-1}}{T_{x86-4}} \approx 3.99
 ```
 
 ```math
-\frac{T_x86_1}{T_x86_8} \approx 7.69
+\frac{T_{x86-1}}{T_{x86-8}} \approx 7.69
 ```
 
 ```math
-\frac{T_x86_1}{T_x86_2} \approx 3.57
+\frac{T_{arm-1}}{T_{arm-4}} \approx 3.57
 ```
 Это в пределах погрешностей измерений совпадает с примерным предсказанным результатом. Различия могут появляться из-за разных состояний системы в момент исполнения программы. Для архитектуры ARM, как и предполагалось значение этого отношения меньше 4.
 
