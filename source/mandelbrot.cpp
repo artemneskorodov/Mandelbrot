@@ -20,6 +20,7 @@
         #include <immintrin.h>
     #elif defined(__ARM_NEON__)
         #include <arm_neon.h>
+        #include <arm_acle.h>
     #else
         #error Packed 4 floats are only supported on X86 and ARM Neon
     #endif
@@ -47,6 +48,7 @@ static const float          PointOutRadiusSq    = 100.f;
 static const float          DeltaTime           = 100.f;
 static const float          ScaleMult           = 1.2f;
 static const size_t         FPSMeasurementIters = 1;
+static const size_t         ProgressBarLength   = 70;
 
 /*============================================================================*/
 
@@ -78,9 +80,14 @@ static err_state_t      set_colors             (ctx_t          *ctx);
 double                  get_duration           (timespec       *start,
                                                 timespec       *end);
 
-inline void             get_time_proccess      (timespec       *time);
+static inline void      get_time_proccess      (timespec       *time);
 
-inline void             get_time_real          (timespec       *time);
+static inline void      get_time_real          (timespec       *time);
+
+static void             write_progress_bar     ();
+
+static void             update_progress_bar    (size_t          max,
+                                                size_t          current);
 
 /*============================================================================*/
 /* This macro is used in main to avoid writing of checking errors and calling */
@@ -149,6 +156,12 @@ err_state_t get_render_time(ctx_t *ctx) {
         return STATE_FILE_OPENING_ERROR;
     }
     /*------------------------------------------------------------------------*/
+    /* Initializing progress bar and total number of iterations.              */
+    write_progress_bar();
+    size_t max = (2 * iters + (ctx->steps_num - 1) * ctx->step_value) *
+                 ctx->steps_num / 2;
+    size_t current = 0;
+    /*------------------------------------------------------------------------*/
     /* Running rendering window with each point rendering iters time for each */
     /* value with requested step                                              */
     for(size_t step = 0; step < ctx->steps_num; step++) {
@@ -159,21 +172,26 @@ err_state_t get_render_time(ctx_t *ctx) {
         /* Running rendering                                                  */
         _RETURN_IF_ERROR(run_testing_mode(ctx, iters, &time));
         /*--------------------------------------------------------------------*/
-        log_msg("Test %lu completed\n", step + 1);
-        /*--------------------------------------------------------------------*/
-        /* Adding value of current point x, y, xx, xy and yy to sums          */
+        /* Adding value of current point x, y, xx, xy and yy to sums.         */
         avg_x  += (double)iters;
         avg_y  +=         time;
         avg_xx += (double)iters * (double)iters;
         avg_yy +=         time  *         time;
         avg_xy += (double)iters *         time;
         /*--------------------------------------------------------------------*/
-        /* Writing point to file                                              */
+        /* Writing point to file.                                             */
         fprintf(output, "%lu, %f\n", iters, time);
         /*--------------------------------------------------------------------*/
-        /* Updating iterations number                                         */
+        /* Updating iterations number.                                        */
         iters += ctx->step_value;
+        /*--------------------------------------------------------------------*/
+        /* Updating progress bar.                                             */
+        current += iters;
+        update_progress_bar(max, current);
     }
+    /*------------------------------------------------------------------------*/
+    /* Writing new line character after progress bar finished its work.       */
+    putchar('\n');
     /*------------------------------------------------------------------------*/
     /* Closing output file                                                    */
     fclose(output);
@@ -218,15 +236,15 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t render_iters, double *time) {
     /* Getting start time using clock_gettime() which is only for Linux but   */
     /* it has less error than clock() or time                                 */
     timespec start;
-    get_time_proccess(&start);
+    get_time_real(&start);
     /*------------------------------------------------------------------------*/
     _RETURN_IF_ERROR(render_mandelbrot(ctx, render_iters));
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
     timespec end;
-    get_time_proccess(&end);
+    get_time_real(&end);
     /*------------------------------------------------------------------------*/
-    /* Writing answer as double in seconds                                    */
+    /* Writing render time as double in seconds                               */
     *time = get_duration(&start, &end);
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
@@ -259,7 +277,6 @@ err_state_t run_normal_mode(ctx_t *ctx) {
         timespec end;
         get_time_real(&end);
         ctx->fps = (double)FPSMeasurementIters / get_duration(&start, &end);
-        fprintf(stderr, "%.10f FPS\n", ctx->fps);
     }
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
@@ -906,6 +923,62 @@ double get_duration(timespec *start, timespec *end) {
     /* Returning duration in seconds                                          */
     return (double)render_time.tv_sec + (double)render_time.tv_nsec / 1e9;
     /*------------------------------------------------------------------------*/
+}
+
+/*============================================================================*/
+/* Function writes progress bar for first time. It is expected that no other  */
+/* text will be written to stdout or stderr untill progress reaches its end.  */
+/* Use update_progress_bar(size_t, size_t) to update progress bar.            */
+
+void write_progress_bar() {
+    /*------------------------------------------------------------------------*/
+    /* Printing progress bar.                                                 */
+    putchar('[');
+    for(size_t i = 0; i < ProgressBarLength; i++) {
+        putchar('.');
+    }
+    putchar(']');
+    /*------------------------------------------------------------------------*/
+    /* Printing 0 percentage of progress.                                     */
+    printf(" 0 %%");
+    /*------------------------------------------------------------------------*/
+    fflush(stdout);
+}
+
+/*============================================================================*/
+/* Function updates progress bar. It is expected that no other function will  */
+/* write to stdout ot stderr untill progress bar ended. Use function          */
+/* write_progress_bar() first to initialize it. Also don't forget to print    */
+/* new line character '\n' after progress bar reached its end.                */
+
+void update_progress_bar(size_t max, size_t current) {
+    /*------------------------------------------------------------------------*/
+    /* Number of symbols in progress bar which are on.                        */
+    size_t pixels_on = current * ProgressBarLength / max;
+    /*------------------------------------------------------------------------*/
+    /* If reached end setting to maximum.                                     */
+    if(pixels_on > ProgressBarLength) {
+        pixels_on = ProgressBarLength;
+    }
+    /*------------------------------------------------------------------------*/
+    /* Deleting old progress bar from console.                                */
+    putchar('\r');
+    /*------------------------------------------------------------------------*/
+    /* Writing new progress bar.                                              */
+    putchar('[');
+    for(size_t i = 0; i < pixels_on; i++) {
+        putchar('*');
+    }
+    for(size_t i = 0; i < ProgressBarLength - pixels_on; i++) {
+        putchar('.');
+    }
+    putchar(']');
+    /*------------------------------------------------------------------------*/
+    /* Writing percentage value of progress.                                  */
+    size_t percentage = (size_t)(100.f * (float)current / (float)max);
+    printf(" %lu %%", percentage);
+    /*------------------------------------------------------------------------*/
+    fflush(stdout);
 }
 
 /*============================================================================*/
