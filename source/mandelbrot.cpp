@@ -65,7 +65,7 @@ static err_state_t      run_normal_mode        (ctx_t          *ctx);
 
 static err_state_t      run_testing_mode       (ctx_t          *ctx,
                                                 size_t          render_iters,
-                                                double         *time);
+                                                unsigned long  *ticks);
 
 static err_state_t      get_render_time        (ctx_t          *ctx);
 
@@ -79,14 +79,14 @@ static err_state_t      set_colors             (ctx_t          *ctx);
 double                  get_duration           (timespec       *start,
                                                 timespec       *end);
 
-static inline void      get_time_proccess      (timespec       *time);
-
 static inline void      get_time_real          (timespec       *time);
 
 static void             write_progress_bar     ();
 
 static void             update_progress_bar    (size_t          max,
                                                 size_t          current);
+
+inline unsigned long    get_ticks              (void);
 
 /*============================================================================*/
 /* This macro is used in main to avoid writing of checking errors and calling */
@@ -136,11 +136,11 @@ int main(int argc, const char *argv[]) {
 err_state_t get_render_time(ctx_t *ctx) {
     /*------------------------------------------------------------------------*/
     /* Avarage values to use least squares method                             */
-    double avg_x  = 0;
-    double avg_y  = 0;
-    double avg_xx = 0;
-    double avg_xy = 0;
-    double avg_yy = 0;
+    unsigned long lu_avg_x  = 0;
+    unsigned long lu_avg_y  = 0;
+    unsigned long lu_avg_xx = 0;
+    unsigned long lu_avg_xy = 0;
+    unsigned long lu_avg_yy = 0;
     /*------------------------------------------------------------------------*/
     /* Current number of iterations is stored in variable iters               */
     size_t iters = ctx->iters_point_min;
@@ -166,20 +166,20 @@ err_state_t get_render_time(ctx_t *ctx) {
     for(size_t step = 0; step < ctx->steps_num; step++) {
         /*--------------------------------------------------------------------*/
         /* Variable which will containg rendering time                        */
-        double time = 0;
+        unsigned long ticks = 0;
         /*--------------------------------------------------------------------*/
         /* Running rendering                                                  */
-        _RETURN_IF_ERROR(run_testing_mode(ctx, iters, &time));
+        _RETURN_IF_ERROR(run_testing_mode(ctx, iters, &ticks));
         /*--------------------------------------------------------------------*/
         /* Adding value of current point x, y, xx, xy and yy to sums.         */
-        avg_x  += (double)iters;
-        avg_y  +=         time;
-        avg_xx += (double)iters * (double)iters;
-        avg_yy +=         time  *         time;
-        avg_xy += (double)iters *         time;
+        lu_avg_x  += iters;
+        lu_avg_y  += ticks;
+        lu_avg_xx += iters * iters;
+        lu_avg_yy += ticks * ticks;
+        lu_avg_xy += iters * ticks;
         /*--------------------------------------------------------------------*/
         /* Writing point to file.                                             */
-        fprintf(output, "%lu, %f\n", iters, time);
+        fprintf(output, "%lu, %lu\n", iters, ticks);
         /*--------------------------------------------------------------------*/
         /* Updating iterations number.                                        */
         iters += ctx->step_value;
@@ -196,29 +196,22 @@ err_state_t get_render_time(ctx_t *ctx) {
     fclose(output);
     /*------------------------------------------------------------------------*/
     /* Getting avarage values for least squares method                        */
-    avg_x  /= (double)ctx->steps_num;
-    avg_y  /= (double)ctx->steps_num;
-    avg_xx /= (double)ctx->steps_num;
-    avg_xy /= (double)ctx->steps_num;
-    avg_yy /= (double)ctx->steps_num;
+    double avg_x  = (double)lu_avg_x  / (double)ctx->steps_num;
+    double avg_y  = (double)lu_avg_y  / (double)ctx->steps_num;
+    double avg_xx = (double)lu_avg_xx / (double)ctx->steps_num;
+    double avg_xy = (double)lu_avg_xy / (double)ctx->steps_num;
+    double avg_yy = (double)lu_avg_yy / (double)ctx->steps_num;
     /*------------------------------------------------------------------------*/
     /* Determining angle coefficient and its error using least squares method */
     /*  k = (<xy> - <x><y>) / (<xx> - <x><x>)                                 */
     /* dk = (1 / sqrt(n)) * sqrt((<yy> - <y><y>) / (<xx> - <x><x>) - k * k)   */
     double render_time_val = (avg_xy - avg_x * avg_y) /
                              (avg_xx - avg_x * avg_x);
-    double render_time_err = sqrt(((avg_yy - avg_y * avg_y) /
-                                   (avg_xx - avg_x * avg_x) -
-                                   render_time_val * render_time_val) /
-                                  (double)ctx->steps_num);
     /*------------------------------------------------------------------------*/
     /* Outputting value                                                       */
     color_printf(MAGENTA_TEXT, BOLD_TEXT, DEFAULT_BACKGROUND,
-                 "╭─────────────────────────────────────────╮\n"
-                 "│ Screen render time: %.6f ± %.6f │\n"
-                 "╰─────────────────────────────────────────╯\n",
-                 render_time_val,
-                 render_time_err);
+                 "Screen render ticks: %.0f\n",
+                 render_time_val);
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
@@ -230,21 +223,21 @@ err_state_t get_render_time(ctx_t *ctx) {
 /* the results does not depend on other proccesses runned on machine.         */
 /* Funciton writes render time to 'time' in seconds.                          */
 
-err_state_t run_testing_mode(ctx_t *ctx, size_t render_iters, double *time) {
+err_state_t run_testing_mode(ctx_t         *ctx,
+                             size_t         render_iters,
+                             unsigned long *ticks) {
     /*------------------------------------------------------------------------*/
     /* Getting start time using clock_gettime() which is only for Linux but   */
     /* it has less error than clock() or time                                 */
-    timespec start;
-    get_time_proccess(&start);
+    unsigned long start_ticks = get_ticks();
     /*------------------------------------------------------------------------*/
     _RETURN_IF_ERROR(render_mandelbrot(ctx, render_iters));
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
-    timespec end;
-    get_time_proccess(&end);
+    unsigned long end_ticks = get_ticks();
     /*------------------------------------------------------------------------*/
     /* Writing render time as double in seconds                               */
-    *time = get_duration(&start, &end);
+    *ticks = end_ticks - start_ticks;
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
@@ -724,7 +717,7 @@ inline void update_window(ctx_t *ctx) {
     ctx->window.draw(ctx->box);
     /*------------------------------------------------------------------------*/
     /* Updating FPS value                                                     */
-    sprintf(ctx->fps_buffer, "%.3f FPS", ctx->fps);
+    snprintf(ctx->fps_buffer, FPSBufferSize, "%.3f FPS", ctx->fps);
     ctx->fps_text.setString(ctx->fps_buffer);
     ctx->window.draw(ctx->fps_text);
     /*------------------------------------------------------------------------*/
@@ -750,23 +743,27 @@ err_state_t prog_ctor(ctx_t *ctx, int argc, const char *argv[]) {
     if(!ctx->testing_mode) {
         /*--------------------------------------------------------------------*/
         /* Creating window                                                    */
-        ctx->window.create(sf::VideoMode(WindowWidth, WindowHeight),
-                           WindowTitle);
+        ctx->window.create             (sf::VideoMode(WindowWidth,
+                                                      WindowHeight),
+                                        WindowTitle);
         /*--------------------------------------------------------------------*/
         /* Creating texture which will fill the window                        */
-        ctx->texture.create(WindowWidth, WindowHeight);
+        ctx->texture.create            (WindowWidth, WindowHeight);
         /*--------------------------------------------------------------------*/
         /* Setting sprite position and texture                                */
-        ctx->box.setPosition(0, 0);
-        ctx->box.setTexture(ctx->texture);
-        ctx->box.setTextureRect(sf::IntRect(0, 0, WindowWidth, WindowHeight));
+        ctx->box.setPosition           (0, 0);
+        ctx->box.setTexture            (ctx->texture);
+        ctx->box.setTextureRect        (sf::IntRect(0,
+                                                    0,
+                                                    WindowWidth,
+                                                    WindowHeight));
         /*--------------------------------------------------------------------*/
         /* Setting FPS string info                                            */
-        ctx->font.loadFromFile("font.ttf");
-        ctx->fps_text.setFont(ctx->font);
-        ctx->fps_text.setCharacterSize(30);
-        ctx->fps_text.setStyle(sf::Text::Bold);
-        ctx->fps_text.setFillColor(sf::Color::Green);
+        ctx->font.loadFromFile         ("font.ttf");
+        ctx->fps_text.setFont          (ctx->font);
+        ctx->fps_text.setCharacterSize (30);
+        ctx->fps_text.setStyle         (sf::Text::Bold);
+        ctx->fps_text.setFillColor     (sf::Color::Green);
         /*--------------------------------------------------------------------*/
         log_msg("Successfully created window\n");
         /*--------------------------------------------------------------------*/
@@ -888,16 +885,14 @@ err_state_t update_position(ctx_t *ctx) {
 }
 
 /*============================================================================*/
-
+/* This function writes current real time to 'time' structure. It is only     */
+/* expected to use as time difference.                                        */
 inline void get_time_real(timespec *time) {
     clock_gettime(CLOCK_REALTIME, time);
 }
 
-inline void get_time_proccess(timespec *time) {
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, time);
-}
-
 /*============================================================================*/
+/* This function returns difference of times as seconds.                      */
 
 double get_duration(timespec *start, timespec *end) {
     /*------------------------------------------------------------------------*/
@@ -978,6 +973,16 @@ void update_progress_bar(size_t max, size_t current) {
     printf(" %lu %%", percentage);
     /*------------------------------------------------------------------------*/
     fflush(stdout);
+}
+
+/*============================================================================*/
+
+inline unsigned long get_ticks(void) {
+    #if defined(__ARM_NEON__)
+        return __builtin_readcyclecounter();
+    #elif defined(__x86_64__) or defined(_M_X64)
+        return __rdtsc();
+    #endif
 }
 
 /*============================================================================*/
