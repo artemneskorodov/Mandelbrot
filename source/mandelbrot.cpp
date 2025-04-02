@@ -20,7 +20,6 @@
         #include <immintrin.h>
     #elif defined(__ARM_NEON__)
         #include <arm_neon.h>
-        #include <arm_acle.h>
     #else
         #error Packed 4 floats are only supported on X86 and ARM Neon
     #endif
@@ -236,13 +235,13 @@ err_state_t run_testing_mode(ctx_t *ctx, size_t render_iters, double *time) {
     /* Getting start time using clock_gettime() which is only for Linux but   */
     /* it has less error than clock() or time                                 */
     timespec start;
-    get_time_real(&start);
+    get_time_proccess(&start);
     /*------------------------------------------------------------------------*/
     _RETURN_IF_ERROR(render_mandelbrot(ctx, render_iters));
     /*------------------------------------------------------------------------*/
     /* Getting end time of rendering                                          */
     timespec end;
-    get_time_real(&end);
+    get_time_proccess(&end);
     /*------------------------------------------------------------------------*/
     /* Writing render time as double in seconds                               */
     *time = get_duration(&start, &end);
@@ -975,7 +974,7 @@ void update_progress_bar(size_t max, size_t current) {
     putchar(']');
     /*------------------------------------------------------------------------*/
     /* Writing percentage value of progress.                                  */
-    size_t percentage = (size_t)(100.f * (float)current / (float)max);
+    size_t percentage = (size_t)(100.f * (float)current / (float)max) % 100;
     printf(" %lu %%", percentage);
     /*------------------------------------------------------------------------*/
     fflush(stdout);

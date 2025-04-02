@@ -152,7 +152,6 @@ obj_x86: ${SOURCE} ${BINDIR} ${LOGDIR}
 	$(foreach SRC,${SOURCE},$(shell g++ -c ${SRC} ${X86_CXXFLAGS} -o $(addsuffix .o,$(addprefix ${BINDIR}/,$(basename $(notdir ${SRC}))))))
 clean:
 	rm -rf ${BINDIR}
-	rm -rf ${LOGDIR}
 ${SOURCE}:
 
 ${BINDIR}:
