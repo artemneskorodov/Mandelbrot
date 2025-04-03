@@ -131,7 +131,6 @@ err_state_t get_render_time(ctx_t *ctx) {
     unsigned long lu_avg_y  = 0;
     unsigned long lu_avg_xx = 0;
     unsigned long lu_avg_xy = 0;
-    unsigned long lu_avg_yy = 0;
     /*------------------------------------------------------------------------*/
     /* Current number of iterations is stored in variable iters               */
     size_t iters = ctx->iters_point_min;
@@ -166,7 +165,6 @@ err_state_t get_render_time(ctx_t *ctx) {
         lu_avg_x  += iters;
         lu_avg_y  += ticks;
         lu_avg_xx += iters * iters;
-        lu_avg_yy += ticks * ticks;
         lu_avg_xy += iters * ticks;
         /*--------------------------------------------------------------------*/
         /* Writing point to file.                                             */
@@ -191,11 +189,9 @@ err_state_t get_render_time(ctx_t *ctx) {
     double avg_y  = (double)lu_avg_y  / (double)ctx->steps_num;
     double avg_xx = (double)lu_avg_xx / (double)ctx->steps_num;
     double avg_xy = (double)lu_avg_xy / (double)ctx->steps_num;
-    double avg_yy = (double)lu_avg_yy / (double)ctx->steps_num;
     /*------------------------------------------------------------------------*/
     /* Determining angle coefficient and its error using least squares method */
     /*  k = (<xy> - <x><y>) / (<xx> - <x><x>)                                 */
-    /* dk = (1 / sqrt(n)) * sqrt((<yy> - <y><y>) / (<xx> - <x><x>) - k * k)   */
     double render_time_val = (avg_xy - avg_x * avg_y) /
                              (avg_xx - avg_x * avg_x);
     /*------------------------------------------------------------------------*/
