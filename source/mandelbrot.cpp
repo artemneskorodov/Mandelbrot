@@ -3,7 +3,7 @@
 /* Supported constants are 1, 4 and 8. They use floats, XMM's and YMM's       */
 /* respectively                                                               */
 
-#define RENDER_VECTOR_1
+#define RENDER_VECTOR_4
 /*============================================================================*/
 #include <stdio.h>
 #include <SFML/Window.hpp>
@@ -354,12 +354,9 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         /*--------------------------------------------------------------------*/
         typedef __m128i *pixel_ptr_t;
         /*--------------------------------------------------------------------*/
-        static const unsigned int PackedSize = 4;
+        static vector_t mm_create_initializer(float dx);
         /*--------------------------------------------------------------------*/
-        #define _MM_CREATE_INITIALIZER(_dx)     _mm_set_ps        (3.f * (_dx),\
-                                                                   2.f * (_dx),\
-                                                                   1.f * (_dx),\
-                                                                   0.f)
+        static const unsigned int PackedSize = 4;
         /*--------------------------------------------------------------------*/
         #define _MM_SET1_PS(_value)             _mm_set1_ps       ((_value ))
         /*--------------------------------------------------------------------*/
@@ -380,14 +377,22 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         #define _MM_CMPLE_PS(_value1, _value2)  _mm_cmple_ps      ((_value1),  \
                                                                    (_value2))
         /*--------------------------------------------------------------------*/
-        #define _MM_TEST_SI(_value1, _value2)   _mm_testz_si128   ((_value1),  \
-                                                                   (_value2))
+        #define _MM_CHECK_ZERO(_value)          _mm_testz_si128   ((_value),   \
+                                                                   (_value))
         /*--------------------------------------------------------------------*/
         #define _MM_AND_SI(_value1, _value2)    _mm_and_si128     ((_value1),  \
                                                                    (_value2))
         /*--------------------------------------------------------------------*/
         #define _MM_STORE_SI(_dst, _value)      _mm_store_si128   ((_dst   ),  \
                                                                    (_value ))
+        /*--------------------------------------------------------------------*/
+        vector_t mm_create_initializer(float x0, float dx) {
+            return _MM_ADD_PS(_MM_SET1_PS(x0),
+                              __mm_set_ps(3.f * dx,
+                                          2.f * dx,
+                                          1.f * dx,
+                                          0.f * dx));
+        }
     /*========================================================================*/
     #elif defined(RENDER_VECTOR_8) and (defined(__x86_64__) or defined(_M_X64))
     /* Macroses that are used in render function when rendering with 8 packed */
@@ -403,14 +408,7 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         /*--------------------------------------------------------------------*/
         static const unsigned int PackedSize = 8;
         /*--------------------------------------------------------------------*/
-        #define _MM_CREATE_INITIALIZER(_dx)     _mm256_set_ps     (7.f * (_dx),\
-                                                                   6.f * (_dx),\
-                                                                   5.f * (_dx),\
-                                                                   4.f * (_dx),\
-                                                                   3.f * (_dx),\
-                                                                   2.f * (_dx),\
-                                                                   1.f * (_dx),\
-                                                                   0.f)
+        static vector_t mm_create_initializer(float dx);
         /*--------------------------------------------------------------------*/
         #define _MM_SET1_PS(_value)             _mm256_set1_ps    ((_value ))
         /*--------------------------------------------------------------------*/
@@ -432,14 +430,26 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
                                                                    (_value2),  \
                                                                     18)
         /*--------------------------------------------------------------------*/
-        #define _MM_TEST_SI(_value1, _value2)   _mm256_testz_si256((_value1),  \
-                                                                   (_value2))
+        #define _MM_CHECK_ZERO(_value)          _mm256_testz_si256((_value),   \
+                                                                   (_value))
         /*--------------------------------------------------------------------*/
         #define _MM_AND_SI(_value1, _value2)    _mm256_and_si256  ((_value1),  \
                                                                    (_value2))
         /*--------------------------------------------------------------------*/
         #define _MM_STORE_SI(_dst, _value)      _mm256_store_si256((_dst   ),  \
                                                                    (_value ))
+        /*--------------------------------------------------------------------*/
+        vector_t mm_create_initializer(float x0, float dx) {
+            return _MM_ADD_PS(_MM_SET1_PS   (x0),
+                              __mm256_set_ps(7.f * dx,
+                                             6.f * dx,
+                                             5.f * dx,
+                                             4.f * dx,
+                                             3.f * dx,
+                                             2.f * dx,
+                                             1.f * dx,
+                                             0.f * dx));
+        }
     /*========================================================================*/
     #elif defined(RENDER_VECTOR_4) and defined(__ARM_NEON__)
 
@@ -451,6 +461,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         typedef uint32_t *pixel_ptr_t;
         /*--------------------------------------------------------------------*/
         static const unsigned int PackedSize = 4;
+        /*--------------------------------------------------------------------*/
+        static vector_t mm_create_x0_init(float x0, float dx);
         /*--------------------------------------------------------------------*/
         #define _MM_SET1_PS(_value)             vdupq_n_f32       ((_value ))
         /*--------------------------------------------------------------------*/
@@ -471,11 +483,20 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
         #define _MM_CMPLE_PS(_value1, _value2)  vcleq_f32         ((_value1),  \
                                                                    (_value2))
         /*--------------------------------------------------------------------*/
+        #define _MM_CHECK_ZERO(_cmp)          (!vgetq_lane_u64((_cmp), 0) &&   \
+                                               !vgetq_lane_u64((_cmp), 1))
+        /*--------------------------------------------------------------------*/
         #define _MM_AND_SI(_value1, _value2)    vandq_u32         ((_value1),  \
                                                                    (_value2))
         /*--------------------------------------------------------------------*/
         #define _MM_STORE_SI(_dst, _value)      vst1q_u32         ((_dst   ),  \
                                                                    (_value ))
+        /*--------------------------------------------------------------------*/
+        vector_t mm_create_x0_init(float x0, float dx) {
+            float32_t dx_temp_arr[4] = {0.f * dx, 1.f * dx, 2.f * dx, 3.f * dx};
+            vector_t dx_temp = vld1q_f32(dx_temp_arr);
+            return _MM_ADD_PS(_MM_SET1_PS(x0), dx_temp);
+        }
     /*========================================================================*/
     #endif
 /*============================================================================*/
@@ -503,28 +524,8 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
     /*------------------------------------------------------------------------*/
     /* Creating initializer constant for x0 (with PackedSize points)          */
     /* Temp variables use to avoid using of registers                         */
-    vector_t  x0_init  = {0};
-    {
-        vector_t x0_temp = _MM_SET1_PS(-0.5f * ctx->scale - ctx->offset_x);
-        /*--------------------------------------------------------------------*/
-        #if (defined(__x86_64__) or defined(_M_X64))
-        /* This is way to create vector with one element in X86               */
-        /*--------------------------------------------------------------------*/
-            vector_t    dx_temp     = _MM_CREATE_INITIALIZER(dx_float);
-        /*--------------------------------------------------------------------*/
-        /* This is way to create vector with one element in ARM               */
-        #elif defined(__ARM_NEON__)
-        /*--------------------------------------------------------------------*/
-            float32_t   dx_arr[]    = {0.f,
-                                             dx_float,
-                                       2.f * dx_float,
-                                       3.f * dx_float};
-            vector_t    dx_temp     = vld1q_f32(dx_arr);
-        /*--------------------------------------------------------------------*/
-        #endif
-        /*--------------------------------------------------------------------*/
-        x0_init  = _MM_ADD_PS(x0_temp, dx_temp);
-    }
+    vector_t  x0_init  = mm_create_x0_init(-0.5f * ctx->scale - ctx->offset_x,
+                                           dx_float);
     /*------------------------------------------------------------------------*/
     /* Rendering the screen render_iters times                                */
     for(size_t iteration = 0; iteration < render_iters; iteration++) {
@@ -571,26 +572,9 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
                     /*--------------------------------------------------------*/
                     /* Checking if all points escaped                         */
                     /*--------------------------------------------------------*/
-                    #if defined(__x86_64__) or defined(_M_X64)
-                    /* This is way of compilation for X86                     */
-                    /*--------------------------------------------------------*/
-                        if(_MM_TEST_SI(cmp_result, cmp_result)) {
-                            break;
-                        }
-                    /*--------------------------------------------------------*/
-                    #elif defined(__ARM_NEON__)
-                    /* This is way of compilation for ARM                     */
-                    /*--------------------------------------------------------*/
-                        uint32_t cmp_array[4] = {};
-                        vst1q_u32(cmp_array, cmp_result);
-                        if(cmp_array[0] == 0 &&
-                           cmp_array[1] == 0 &&
-                           cmp_array[2] == 0 &&
-                           cmp_array[3] == 0) {
-                            break;
-                        }
-                    /*--------------------------------------------------------*/
-                    #endif
+                    if(_MM_CHECK_ZERO(cmp_result)) {
+                        break;
+                    }
                     /*--------------------------------------------------------*/
                     /* Applying bitmask that sets not escaped points elements */
                     /* to ones and adding them to iters vector                */
