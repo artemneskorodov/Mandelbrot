@@ -5,7 +5,7 @@
 #include "mandelbrot.h"
 /*============================================================================*/
 
-err_state_t parse_flags(ctx_t *ctx, int argc, const char *argv[]);
+md_err_t parse_flags(md_ctx_t *ctx, int argc, const char *argv[]);
 
 /*============================================================================*/
 #endif

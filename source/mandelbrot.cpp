@@ -26,6 +26,7 @@
 #include "colors.h"
 #include "mandelbrot.h"
 #include "parse_flags.h"
+#include "custom_assert.h"
 /*============================================================================*/
 
 static const char          *WindowTitle         = "Mandelbrot";
@@ -42,30 +43,30 @@ static const size_t         ProgressBarLength   = 70;
 
 /*============================================================================*/
 
-static err_state_t      prog_ctor              (ctx_t          *ctx,
+static md_err_t         prog_ctor              (md_ctx_t       *ctx,
                                                 int             argc,
                                                 const char     *argv[]);
 
-static err_state_t      prog_dtor              (ctx_t          *ctx);
+static md_err_t         prog_dtor              (md_ctx_t       *ctx);
 
-static inline void      update_window          (ctx_t          *ctx);
+static inline void      update_window          (md_ctx_t       *ctx);
 
-static err_state_t      update_position        (ctx_t          *ctx);
+static md_err_t         update_position        (md_ctx_t       *ctx);
 
-static err_state_t      run_normal_mode        (ctx_t          *ctx);
+static md_err_t         run_normal_mode        (md_ctx_t       *ctx);
 
-static err_state_t      run_testing_mode       (ctx_t          *ctx,
+static md_err_t         run_testing_mode       (md_ctx_t       *ctx,
                                                 size_t          render_iters,
                                                 unsigned long  *ticks);
 
-static err_state_t      get_render_time        (ctx_t          *ctx);
+static md_err_t         get_render_time        (md_ctx_t       *ctx);
 
 static sf::Uint32       get_point_color        (unsigned int    iters);
 
-static err_state_t      render_mandelbrot      (ctx_t          *ctx,
+static md_err_t         render_mandelbrot      (md_ctx_t       *ctx,
                                                 size_t          render_iters);
 
-static err_state_t      set_colors             (ctx_t          *ctx);
+static md_err_t         set_colors             (md_ctx_t       *ctx);
 
 double                  get_duration           (timespec       *start,
                                                 timespec       *end);
@@ -84,7 +85,7 @@ inline unsigned long    get_ticks              (void);
 /* context destructor a lot                                                   */
 
 #define _EXIT_IF_ERROR(...) {                                                  \
-    err_state_t _error_code = (__VA_ARGS__);                                   \
+    md_err_t _error_code = (__VA_ARGS__);                                      \
     if(_error_code != STATE_SUCCESS) {                                         \
         prog_dtor(&ctx);                                                       \
         return (int)_error_code;                                               \
@@ -99,7 +100,7 @@ inline unsigned long    get_ticks              (void);
 int main(int argc, const char *argv[]) {
     /*------------------------------------------------------------------------*/
     /* Initializing context                                                   */
-    ctx_t ctx = {};
+    md_ctx_t ctx = {};
     _EXIT_IF_ERROR(prog_ctor(&ctx, argc, argv));
 
     /*------------------------------------------------------------------------*/
@@ -124,7 +125,9 @@ int main(int argc, const char *argv[]) {
 /* squares method. It also writes points (number of iterations and time) to   */
 /* file which is also pushed from user with flag '--output'                   */
 
-err_state_t get_render_time(ctx_t *ctx) {
+md_err_t get_render_time(md_ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Avarage values to use least squares method                             */
     unsigned long lu_avg_x  = 0;
@@ -210,9 +213,12 @@ err_state_t get_render_time(ctx_t *ctx) {
 /* the results does not depend on other proccesses runned on machine.         */
 /* Funciton writes render time to 'time' in seconds.                          */
 
-err_state_t run_testing_mode(ctx_t         *ctx,
+md_err_t run_testing_mode(md_ctx_t         *ctx,
                              size_t         render_iters,
                              unsigned long *ticks) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx   != NULL, return STATE_MD_CTX_NULL_PTR);
+    _C_ASSERT(ticks != NULL, return STATE_RETVAL_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Getting start time using clock_gettime() which is only for Linux but   */
     /* it has less error than clock() or time                                 */
@@ -233,7 +239,9 @@ err_state_t run_testing_mode(ctx_t         *ctx,
 /* Function runs loop, which renders Mandelbrot set with current screen       */
 /* position and scale. It also allows to move, by calling update_position()   */
 
-err_state_t run_normal_mode(ctx_t *ctx) {
+md_err_t run_normal_mode(md_ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Running screen until it is closed                                      */
     while(true) {
@@ -271,7 +279,9 @@ err_state_t run_normal_mode(ctx_t *ctx) {
 /* times. It does not use packed float numbers so this is the slowest way of  */
 /* rendering.                                                                 */
 
-err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
+md_err_t render_mandelbrot(md_ctx_t *ctx, size_t render_iters) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Creating constant that used to move point to next                      */
     const float dx = ctx->scale / WindowWidthFloat;
@@ -504,7 +514,9 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
 /* turned on. It uses defines that depend on number of floats in one packed   */
 /* vector.                                                                    */
 
-err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
+md_err_t render_mandelbrot(md_ctx_t *ctx, size_t render_iters) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* dx_float variable is used in different places, so saving it once       */
     float     dx_float = ctx->scale / WindowWidthFloat;
@@ -629,7 +641,9 @@ err_state_t render_mandelbrot(ctx_t *ctx, size_t render_iters) {
 /* is set to number of iterations for this specific point to escape from      */
 /* Mandelbrot set.                                                            */
 
-err_state_t set_colors(ctx_t *ctx) {
+md_err_t set_colors(md_ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Converting each pixel iterations number to escape to its color         */
     for(unsigned int elem = 0; elem < WindowHeight * WindowWidth; elem++) {
@@ -679,7 +693,9 @@ sf::Uint32 get_point_color(unsigned int iters) {
 /*============================================================================*/
 /* Drawing image on screen.                                                   */
 
-inline void update_window(ctx_t *ctx) {
+inline void update_window(md_ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return );
     /*------------------------------------------------------------------------*/
     /* Updating texture with points array                                     */
     ctx->texture.update((sf::Uint8 *)ctx->image);
@@ -701,7 +717,10 @@ inline void update_window(ctx_t *ctx) {
 /* Mandelbrot context constructor which gets user input, creates image and    */
 /* window to draw on.                                                         */
 
-err_state_t prog_ctor(ctx_t *ctx, int argc, const char *argv[]) {
+md_err_t prog_ctor(md_ctx_t *ctx, int argc, const char *argv[]) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx  != NULL, return STATE_MD_CTX_NULL_PTR);
+    _C_ASSERT(argv != NULL, return STATE_PARAMETER_NULL_PTR);
     /*------------------------------------------------------------------------*/
     log_msg("Starting initializing\n");
     /*------------------------------------------------------------------------*/
@@ -756,10 +775,13 @@ err_state_t prog_ctor(ctx_t *ctx, int argc, const char *argv[]) {
 /*============================================================================*/
 /* Mandelbrot context destructor. It frees image which is allocated           */
 
-err_state_t prog_dtor(ctx_t *ctx) {
+md_err_t prog_dtor(md_ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Free of points array which is allocated in all modes                   */
     free(ctx->image);
+    ctx->image = NULL;
     /*------------------------------------------------------------------------*/
     return STATE_SUCCESS;
 }
@@ -768,6 +790,8 @@ err_state_t prog_dtor(ctx_t *ctx) {
 /* Writes log message. This function works for long time as it calls flush()  */
 
 int log_msg(const char *format, ...) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(format != NULL, return STATE_PARAMETER_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Getting args list                                                      */
     va_list args;
@@ -794,6 +818,8 @@ int log_msg(const char *format, ...) {
 
 int err_msg(const char *format, ...) {
     /*------------------------------------------------------------------------*/
+    _C_ASSERT(format != NULL, return STATE_PARAMETER_NULL_PTR);
+    /*------------------------------------------------------------------------*/
     /* Getting args list                                                      */
     va_list args;
     va_start(args, format);
@@ -818,7 +844,9 @@ int err_msg(const char *format, ...) {
 /* Checking if the window is closed and updating position depending on pressed*/
 /* keys.                                                                      */
 
-err_state_t update_position(ctx_t *ctx) {
+md_err_t update_position(md_ctx_t *ctx) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(ctx != NULL, return STATE_MD_CTX_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Checking if window is closed                                           */
     sf::Event event;
@@ -859,6 +887,9 @@ err_state_t update_position(ctx_t *ctx) {
 /* This function writes current real time to 'time' structure. It is only     */
 /* expected to use as time difference.                                        */
 inline void get_time_real(timespec *time) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(time != NULL, return );
+    /*------------------------------------------------------------------------*/
     clock_gettime(CLOCK_REALTIME, time);
 }
 
@@ -866,6 +897,9 @@ inline void get_time_real(timespec *time) {
 /* This function returns difference of times as seconds.                      */
 
 double get_duration(timespec *start, timespec *end) {
+    /*------------------------------------------------------------------------*/
+    _C_ASSERT(start != NULL, return STATE_PARAMETER_NULL_PTR);
+    _C_ASSERT(end   != NULL, return STATE_PARAMETER_NULL_PTR);
     /*------------------------------------------------------------------------*/
     /* Determining render time                                                */
     timespec render_time;

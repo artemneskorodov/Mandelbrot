@@ -47,7 +47,7 @@ int color_printf(color_t      color,
                  boldness_t   is_bold,
                  background_t background,
                  const char * format, ...) {
-    C_ASSERT(format != NULL, return -1);
+    _C_ASSERT(format != NULL, return -1);
 
     print_color_code(color, is_bold, background);
 
@@ -87,7 +87,7 @@ printing_state_t print_color_code(color_t      color,
     }
     if(color != DEFAULT_TEXT) {
         const char *code = color_code(color);
-        C_ASSERT(code != NULL, );
+        _C_ASSERT(code != NULL, );
         printf("%s", code);
         if(background != DEFAULT_BACKGROUND)
             putchar(';');
@@ -98,7 +98,7 @@ printing_state_t print_color_code(color_t      color,
     }
     if(background != DEFAULT_BACKGROUND) {
         const char *code = background_code(background);
-        C_ASSERT(code != NULL, );
+        _C_ASSERT(code != NULL, );
         printf("%sm", code);
         return PRINTING_SUCCESS;
     }

@@ -6,17 +6,17 @@
 #include "colors.h"
 /*============================================================================*/
 
-err_state_t graphics_handler    (ctx_t         *ctx,
+md_err_t graphics_handler    (md_ctx_t         *ctx,
                                  const char    *argv[],
                                  int            argc,
                                  int           *current_flag);
 
-err_state_t test_handler        (ctx_t         *ctx,
+md_err_t test_handler        (md_ctx_t         *ctx,
                                  const char    *argv[],
                                  int            argc,
                                  int           *current_flag);
 
-err_state_t output_handler      (ctx_t         *ctx,
+md_err_t output_handler      (md_ctx_t         *ctx,
                                  const char    *argv[],
                                  int            argc,
                                  int           *current_flag);
@@ -24,7 +24,7 @@ err_state_t output_handler      (ctx_t         *ctx,
 /*============================================================================*/
 
 struct flag_handler_t {
-    err_state_t   (*handler)(ctx_t *, const char *[], int, int *);
+    md_err_t   (*handler)(md_ctx_t *, const char *[], int, int *);
     const char     *long_name;
     const char     *short_name;
 };
@@ -43,7 +43,7 @@ static const size_t FlagHandlersSize = sizeof(FlagHandlers) /
 
 /*============================================================================*/
 
-err_state_t parse_flags(ctx_t *ctx, int argc, const char *argv[]) {
+md_err_t parse_flags(md_ctx_t *ctx, int argc, const char *argv[]) {
     /*------------------------------------------------------------------------*/
     /* Current parsing flag. This index is moved by other functions           */
     int cur_flag = 1;
@@ -106,7 +106,7 @@ err_state_t parse_flags(ctx_t *ctx, int argc, const char *argv[]) {
 
 /*============================================================================*/
 
-err_state_t graphics_handler(ctx_t      *ctx,
+md_err_t graphics_handler(md_ctx_t      *ctx,
                              const char */*argv*/[],
                              int         /*argc*/,
                              int        */*current_flag*/) {
@@ -122,7 +122,7 @@ err_state_t graphics_handler(ctx_t      *ctx,
 
 /*============================================================================*/
 
-err_state_t test_handler(ctx_t      *ctx,
+md_err_t test_handler(md_ctx_t      *ctx,
                          const char *argv[],
                          int         argc,
                          int        *current_flag) {
@@ -152,7 +152,7 @@ err_state_t test_handler(ctx_t      *ctx,
 
 /*============================================================================*/
 
-err_state_t output_handler(ctx_t      *ctx,
+md_err_t output_handler(md_ctx_t      *ctx,
                            const char *argv[],
                            int         argc,
                            int        *current_flag) {

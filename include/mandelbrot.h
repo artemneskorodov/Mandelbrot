@@ -7,19 +7,22 @@
 #include <SFML/System.hpp>
 /*============================================================================*/
 
-enum err_state_t {
+enum md_err_t {
     STATE_SUCCESS               = 0,
     STATE_UNEXPECTED_PARAMETER  = 1,
     STATE_MEMORY_ERROR          = 2,
     STATE_UNKNOWN_FLAG          = 3,
     STATE_EXIT_SUCCESS          = 4,
     STATE_FILE_OPENING_ERROR    = 5,
+    STATE_MD_CTX_NULL_PTR       = 6,
+    STATE_RETVAL_NULL_PTR       = 7,
+    STATE_PARAMETER_NULL_PTR    = 8,
 };
 
 /*============================================================================*/
 
 #define _RETURN_IF_ERROR(...) {                     \
-    err_state_t _error_code = (__VA_ARGS__);        \
+    md_err_t _error_code = (__VA_ARGS__);           \
     if(_error_code != STATE_SUCCESS) {              \
         return _error_code;                         \
     }                                               \
@@ -34,7 +37,7 @@ static const size_t FPSBufferSize   = 32;
 
 /*============================================================================*/
 
-struct ctx_t {
+struct md_ctx_t {
     sf::RenderWindow            window;
     sf::Texture                 texture;
     sf::Sprite                  box;
